@@ -2,6 +2,11 @@
 indicator("EMA/RSI/ATR Advisory (view only)", shorttitle = "EMA-RSI-ATR Advisory",
      overlay = true, max_labels_count = 1, max_lines_count = 3)
 
+HTF_GROUP       = "Higher-timeframe filter"
+HTF_MODE_LADDER = "Preset ladder (1m→15m, 15m→1H, 30m→4H …)"
+HTF_MODE_MULT   = "Multiplier (x current chart)"
+HTF_MODE_FIXED  = "Fixed timeframe"
+
 emaFastLen    = input.int(20, "EMA Fast Period", minval = 1)
 emaSlowLen    = input.int(50, "EMA Slow Period", minval = 2)
 rsiLen        = input.int(14, "RSI Period", minval = 1)
@@ -12,16 +17,56 @@ atrSlMult     = input.float(1.5, "ATR Stop-Loss Multiplier", minval = 0.1, step 
 atrTp1Mult    = input.float(1.5, "ATR Take-Profit 1 Multiplier", minval = 0.1, step = 0.1)
 atrTp2Mult    = input.float(3.0, "ATR Take-Profit 2 Multiplier", minval = 0.1, step = 0.1)
 useRsiFilter  = input.bool(true, "Require RSI confirmation")
-htfMultiplier = input.int(4, "Higher-timeframe multiplier (x current chart)", minval = 2, maxval = 30)
-useHtfFilter  = input.bool(true, "Require higher-timeframe trend agreement")
 moveToBreakeven = input.bool(true, "Move Stop Loss to breakeven after TP1")
 clearOnClose  = input.bool(true, "Clear marker immediately when a trade closes")
 showFiltered  = input.bool(false, "Show raw crossovers a filter blocked (debug)")
 showTable     = input.bool(true, "Show status table")
 
+useHtfFilter  = input.bool(true, "Require higher-timeframe trend agreement", group = HTF_GROUP)
+htfMode       = input.string(HTF_MODE_LADDER, "Higher timeframe comes from",
+     options = [HTF_MODE_LADDER, HTF_MODE_MULT, HTF_MODE_FIXED], group = HTF_GROUP,
+     tooltip = "Preset ladder: the next standard timeframe a trader normally checks, keyed on the chart " +
+     "(1m/2m/3m → 15m, 5m/10m/15m → 1H, 30m/45m/1H → 4H, 2H–4H → 1D, 1D → 1W, 1W → 1M; seconds charts " +
+     "and anything else fall back to the multiplier).\nMultiplier: chart timeframe x the multiplier below.\n" +
+     "Fixed: always the timeframe chosen below, whatever chart you are on.\n\nA choice that is not " +
+     "strictly higher than the chart timeframe is rejected: the filter then blocks every signal and the " +
+     "status table says why.")
+htfMultiplier = input.int(4, "Multiplier (Multiplier mode / ladder fallback)", minval = 2, maxval = 30, group = HTF_GROUP)
+htfFixed      = input.timeframe("60", "Fixed timeframe (Fixed mode)", group = HTF_GROUP)
+
+// Pretty label for a timeframe string: "1" → "1m", "60" → "1H"; "1D"/"1W"/"1M" pass through.
+tfLabel(string tf) =>
+    int secs = timeframe.in_seconds(tf)
+    secs < 60 ? str.tostring(secs) + "s" :
+         secs < 86400 and secs % 3600 == 0 ? str.tostring(secs / 3600) + "H" :
+         secs < 86400 ? str.tostring(secs / 60) + "m" : tf
+
 currentTfSeconds = timeframe.in_seconds(timeframe.period)
-htfMinutesRaw    = currentTfSeconds * htfMultiplier / 60
-htfTimeframe     = htfMinutesRaw >= 1440 ? str.tostring(int(math.round(htfMinutesRaw / 1440))) + "D" : str.tostring(int(math.max(1, math.round(htfMinutesRaw))))
+htfByMultiplier  = timeframe.from_seconds(currentTfSeconds * htfMultiplier)
+
+// Preset ladder, keyed on the chart's own timeframe so the same settings stay
+// sensible when you switch between 1m, 15m, 30m, 1H ... charts.
+ladderRung = timeframe.isseconds ? htfByMultiplier :
+     currentTfSeconds <= 180   ? "15"  :   // 1m, 2m, 3m    → 15m
+     currentTfSeconds <= 900   ? "60"  :   // 5m, 10m, 15m  → 1H
+     currentTfSeconds <= 3600  ? "240" :   // 30m, 45m, 1H  → 4H
+     currentTfSeconds <= 14400 ? "1D"  :   // 2H, 3H, 4H    → 1D
+     timeframe.isdaily         ? "1W"  :   // 1D            → 1W
+     timeframe.isweekly        ? "1M"  :   // 1W            → 1M
+     htfByMultiplier                       // 1M, 6H/8H/12H: fall back to the multiplier
+// A rung that is not strictly above the chart (a 7D chart landing on 1W, a 5W
+// chart on 1M) also falls back to the multiplier, which always rounds up past it.
+htfByLadder = timeframe.in_seconds(ladderRung) > currentTfSeconds ? ladderRung : htfByMultiplier
+
+htfRequested = htfMode == HTF_MODE_LADDER ? htfByLadder :
+     htfMode == HTF_MODE_MULT ? htfByMultiplier : htfFixed
+htfSeconds   = timeframe.in_seconds(htfRequested)
+htfValid     = htfSeconds > currentTfSeconds
+
+// request.security() is only meaningful for a timeframe strictly above the
+// chart's.  An invalid choice is never requested: we fetch the chart timeframe
+// itself (harmless) and treat the filter as failed, so no signal can pass.
+htfTimeframe = htfValid ? htfRequested : timeframe.period
 
 emaFast  = ta.ema(close, emaFastLen)
 emaSlow  = ta.ema(close, emaSlowLen)
@@ -36,20 +81,25 @@ bearishRsiOk = rsiValue < 50 and rsiValue > rsiOversold
 
 htfEmaFast = request.security(syminfo.tickerid, htfTimeframe, ta.ema(close, emaFastLen), lookahead = barmerge.lookahead_off)
 htfEmaSlow = request.security(syminfo.tickerid, htfTimeframe, ta.ema(close, emaSlowLen), lookahead = barmerge.lookahead_off)
-htfBullish = htfEmaFast > htfEmaSlow
-htfBearish = htfEmaFast < htfEmaSlow
+htfBullish = htfValid and htfEmaFast > htfEmaSlow
+htfBearish = htfValid and htfEmaFast < htfEmaSlow
 
-buySignal  = crossedUp   and (not useRsiFilter or bullishRsiOk) and (not useHtfFilter or htfBullish)
-sellSignal = crossedDown and (not useRsiFilter or bearishRsiOk) and (not useHtfFilter or htfBearish)
+// The higher-timeframe gate as the signals see it: always open when the filter
+// is off, otherwise only when a valid higher timeframe agrees.
+htfGateUp   = not useHtfFilter or htfBullish
+htfGateDown = not useHtfFilter or htfBearish
+
+buySignal  = crossedUp   and (not useRsiFilter or bullishRsiOk) and htfGateUp
+sellSignal = crossedDown and (not useRsiFilter or bearishRsiOk) and htfGateDown
 
 plotshape(showFiltered and crossedUp and not buySignal, title = "Crossed up, filtered out",
      style = shape.triangleup, location = location.belowbar, color = color.new(color.gray, 40), size = size.tiny)
 plotshape(showFiltered and crossedDown and not sellSignal, title = "Crossed down, filtered out",
      style = shape.triangledown, location = location.abovebar, color = color.new(color.gray, 40), size = size.tiny)
 
-bgColor = na(emaSlow) or na(htfEmaSlow) ? na :
-     (emaFast > emaSlow and htfBullish) ? color.new(color.green, 93) :
-     (emaFast < emaSlow and htfBearish) ? color.new(color.red, 93) : na
+bgColor = na(emaSlow) ? na :
+     (emaFast > emaSlow and htfGateUp)   ? color.new(color.green, 93) :
+     (emaFast < emaSlow and htfGateDown) ? color.new(color.red, 93) : na
 bgcolor(bgColor, title = "Trend agreement background")
 
 var string status      = "NONE"
@@ -124,7 +174,7 @@ else if status == "OPEN" or status == "TP1_HIT"
             tp2Line     := na
         else
             status := "STOPPED"
-            label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — STOPPED")
+            label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — โดนตัดขาดทุน")
             label.set_color(adviceLabel, color.new(color.gray, 0))
     else if hitTp2
         tp2HitEvent := true
@@ -146,7 +196,7 @@ else if status == "OPEN" or status == "TP1_HIT"
             tp2Line     := na
         else
             status := "TARGET_HIT"
-            label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — TARGET HIT")
+            label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — ถึงเป้าหมาย")
             label.set_color(adviceLabel, color.new(color.teal, 0))
     else if hitTp1
         tp1Hit := true
@@ -156,7 +206,7 @@ else if status == "OPEN" or status == "TP1_HIT"
             managedSL := entryPrice
             line.set_y1(slLine, managedSL)
             line.set_y2(slLine, managedSL)
-        label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — TP1 HIT")
+        label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — ถึงเป้า 1")
         label.set_color(adviceLabel, color.new(isBuy ? color.green : color.red, 0))
     else if reversed
         status := "NONE"
@@ -188,38 +238,97 @@ alertcondition(slHitEvent,  title = "Advisory stopped out",  message = "Stopped 
 
 var table statusTable = table.new(position.top_right, 2, 13, border_width = 1, bgcolor = color.new(color.black, 70))
 if showTable and barstate.islast
-    directionText = direction == 1 ? "BUY" : direction == -1 ? "SELL" : "-"
-    stateText  = status == "NONE" ? "NO_SIGNAL" : directionText + " (" + status + ")"
-    stateColor = status == "STOPPED" ? color.gray : status == "TARGET_HIT" ? color.teal : direction == 1 ? color.lime : direction == -1 ? color.red : color.white
-    biasText   = na(emaSlow) ? "warming up" : emaFast > emaSlow ? "EMA fast > slow" : "EMA fast < slow"
-    biasColor  = na(emaSlow) ? color.gray : emaFast > emaSlow ? color.lime : color.red
-    htfText    = na(htfEmaSlow) ? "warming up" : htfBullish ? "bullish (" + htfTimeframe + ")" : "bearish (" + htfTimeframe + ")"
-    htfColor   = na(htfEmaSlow) ? color.gray : htfBullish ? color.lime : color.red
-    tp1Text    = na(takeProfit1) ? "-" : str.tostring(takeProfit1, format.mintick) + (tp1Hit ? " (HIT)" : "")
-    slText     = na(managedSL) ? "-" : str.tostring(managedSL, format.mintick) + (tp1Hit and moveToBreakeven ? " (breakeven)" : "")
-    table.cell(statusTable, 0, 0, "Symbol", text_color = color.white)
-    table.cell(statusTable, 1, 0, syminfo.ticker + " · " + timeframe.period, text_color = color.white)
-    table.cell(statusTable, 0, 1, "State", text_color = color.white, bgcolor = color.new(color.gray, 50))
-    table.cell(statusTable, 1, 1, stateText, text_color = stateColor, bgcolor = color.new(color.gray, 50))
-    table.cell(statusTable, 0, 2, "Caution", text_color = color.white)
-    table.cell(statusTable, 1, 2, caution ? "YES — weakening" : "no", text_color = caution ? color.orange : color.white)
-    table.cell(statusTable, 0, 3, "Bias", text_color = color.white)
-    table.cell(statusTable, 1, 3, biasText, text_color = biasColor)
-    table.cell(statusTable, 0, 4, "HTF trend", text_color = color.white)
+    string chartName = tfLabel(timeframe.period)
+    string htfName   = tfLabel(htfRequested)
+    bool   warming   = na(emaSlow)
+    bool   htfBroken = useHtfFilter and not htfValid
+    bool   inTrade   = status == "OPEN" or status == "TP1_HIT"
+    string sideName  = direction == 1 ? "BUY (ซื้อ)" : "SELL (ขาย)"
+
+    // Spell out what the NEXT signal is still waiting for, so an empty chart is
+    // never a mystery.  The EMAs are already crossed, so only the opposite cross
+    // can fire next: fast below slow → the next event is a cross up → BUY.
+    bool   nextIsBuy = emaFast < emaSlow
+    bool   rsiReady  = nextIsBuy ? bullishRsiOk : bearishRsiOk
+    bool   htfReady  = nextIsBuy ? htfBullish : htfBearish
+    string waitText  = "รอ " + (nextIsBuy ? "BUY" : "SELL") + " · EMA ต้องตัด" + (nextIsBuy ? "ขึ้น" : "ลง") + " ✗" +
+         (useRsiFilter ? (rsiReady ? " · RSI ✓" : " · RSI ✗") : "") +
+         (useHtfFilter ? (htfReady ? " · " + htfName + " ✓" : " · " + htfName + " ✗") : "")
+
+    string verdictText = warming ? "กำลังโหลดข้อมูล..." :
+         htfBroken ? "ตั้งค่าผิด — ไม่มีสัญญาณแน่นอน" :
+         status == "STOPPED"    ? "ไม้ที่แล้ว: โดนตัดขาดทุน" :
+         status == "TARGET_HIT" ? "ไม้ที่แล้ว: ถึงเป้าหมายแล้ว" :
+         not inTrade ? "รอจังหวะ — ยังไม่มีไม้" :
+         (caution ? "ถือ " + sideName + " อยู่ — เริ่มอ่อนแรง" : "ถือ " + sideName + " อยู่") +
+         (status == "TP1_HIT" ? " · ถึงเป้า 1 แล้ว" : "")
+    color verdictColor = warming ? color.gray : htfBroken ? color.orange :
+         status == "STOPPED" ? color.gray : status == "TARGET_HIT" ? color.teal :
+         not inTrade ? color.white : caution ? color.orange :
+         direction == 1 ? color.lime : color.red
+
+    string actionText = warming ? "ซูมออกให้โหลดครบ " + str.tostring(emaSlowLen) + " แท่งก่อน" :
+         htfBroken ? "เลือก TF ใหญ่ให้สูงกว่า " + chartName + " หรือปิดตัวกรอง" :
+         (status == "STOPPED" or status == "TARGET_HIT") ? "รอสัญญาณใหม่" :
+         not inTrade ? waitText :
+         caution ? "ระวัง — ราคาปิดผิดฝั่ง EMA เร็วแล้ว" :
+         status == "TP1_HIT" ? "ถือต่อ ลุ้นเป้า 2 · SL ปลอดภัยแล้ว" :
+         "ถือต่อ · ออกเมื่อถึงเป้า 1 หรือหลุด SL"
+    color actionColor = (warming or htfBroken or caution) ? color.orange : color.white
+
+    string trendText = warming ? "กำลังคำนวณ..." :
+         emaFast > emaSlow ? "ขาขึ้น (EMA เร็วอยู่บน)" : "ขาลง (EMA เร็วอยู่ล่าง)"
+    color trendColor = warming ? color.gray : emaFast > emaSlow ? color.lime : color.red
+    string htfText   = not htfValid ? "ใช้ไม่ได้ — " + htfName + " ไม่สูงกว่าชาร์ต" :
+         na(htfEmaSlow) ? "กำลังคำนวณ... (" + htfName + ")" :
+         htfBullish ? "ขาขึ้น (" + htfName + ")" : "ขาลง (" + htfName + ")"
+    color htfColor   = not htfValid ? color.orange : na(htfEmaSlow) ? color.gray :
+         htfBullish ? color.lime : color.red
+
+    string entryText = na(entryPrice) ? "-" : str.tostring(entryPrice, format.mintick)
+    string slText    = na(managedSL) ? "-" : str.tostring(managedSL, format.mintick) +
+         (tp1Hit and moveToBreakeven ? " (เท่าทุนแล้ว)" : "")
+    string tp1Text   = na(takeProfit1) ? "-" : str.tostring(takeProfit1, format.mintick) +
+         (tp1Hit ? " (ถึงแล้ว)" : "")
+    string tp2Text   = na(takeProfit2) ? "-" : str.tostring(takeProfit2, format.mintick)
+
+    string rsiText = str.tostring(rsiValue, "#.##") + " · " +
+         (rsiValue >= rsiOverbought ? "ซื้อมากเกินไป" : rsiValue <= rsiOversold ? "ขายมากเกินไป" :
+         rsiValue > 50 ? "หนุนฝั่งซื้อ" : "หนุนฝั่งขาย")
+    string atrText  = str.tostring(atrValue, format.mintick) + " · SL ห่าง ~" +
+         str.tostring(atrValue * atrSlMult, format.mintick)
+    string barsText = str.tostring(bar_index + 1) + " แท่ง" +
+         (warming ? " (ยังไม่พอ ต้อง " + str.tostring(emaSlowLen) + ")" : "")
+
+    string htfModeText   = htfMode == HTF_MODE_LADDER ? "อัตโนมัติ" :
+         htfMode == HTF_MODE_MULT ? "x" + str.tostring(htfMultiplier) : "กำหนดเอง"
+    string htfSourceText = chartName + " → " + htfName + " (" + htfModeText + ")" +
+         (not useHtfFilter ? " · ปิดตัวกรองอยู่" : not htfValid ? " · บล็อกทุกสัญญาณ" : "")
+    color htfSourceColor = not useHtfFilter ? color.gray : not htfValid ? color.orange : color.white
+
+    table.cell(statusTable, 0, 0, "ตอนนี้", text_color = color.white, bgcolor = color.new(color.gray, 40))
+    table.cell(statusTable, 1, 0, verdictText, text_color = verdictColor, bgcolor = color.new(color.gray, 40))
+    table.cell(statusTable, 0, 1, "ควรทำ", text_color = color.white, bgcolor = color.new(color.gray, 60))
+    table.cell(statusTable, 1, 1, actionText, text_color = actionColor, bgcolor = color.new(color.gray, 60))
+    table.cell(statusTable, 0, 2, "เหรียญ · ชาร์ต", text_color = color.white)
+    table.cell(statusTable, 1, 2, syminfo.ticker + " · " + chartName, text_color = color.white)
+    table.cell(statusTable, 0, 3, "เทรนด์ชาร์ตนี้", text_color = color.white)
+    table.cell(statusTable, 1, 3, trendText, text_color = trendColor)
+    table.cell(statusTable, 0, 4, "เทรนด์ TF ใหญ่", text_color = color.white)
     table.cell(statusTable, 1, 4, htfText, text_color = htfColor)
-    table.cell(statusTable, 0, 5, "Entry", text_color = color.white)
-    table.cell(statusTable, 1, 5, na(entryPrice) ? "-" : str.tostring(entryPrice, format.mintick), text_color = color.white)
-    table.cell(statusTable, 0, 6, "Stop Loss", text_color = color.white)
+    table.cell(statusTable, 0, 5, "เข้าที่ราคา", text_color = color.white)
+    table.cell(statusTable, 1, 5, entryText, text_color = color.white)
+    table.cell(statusTable, 0, 6, "ตัดขาดทุน", text_color = color.white)
     table.cell(statusTable, 1, 6, slText, text_color = color.white)
-    table.cell(statusTable, 0, 7, "Take Profit 1", text_color = color.white)
+    table.cell(statusTable, 0, 7, "เป้าที่ 1", text_color = color.white)
     table.cell(statusTable, 1, 7, tp1Text, text_color = color.white)
-    table.cell(statusTable, 0, 8, "Take Profit 2", text_color = color.white)
-    table.cell(statusTable, 1, 8, na(takeProfit2) ? "-" : str.tostring(takeProfit2, format.mintick), text_color = color.white)
-    table.cell(statusTable, 0, 9, "RSI", text_color = color.white)
-    table.cell(statusTable, 1, 9, str.tostring(rsiValue, "#.##"), text_color = color.white)
-    table.cell(statusTable, 0, 10, "ATR", text_color = color.white)
-    table.cell(statusTable, 1, 10, str.tostring(atrValue, format.mintick), text_color = color.white)
-    table.cell(statusTable, 0, 11, "Bars loaded", text_color = color.white)
-    table.cell(statusTable, 1, 11, str.tostring(bar_index + 1), text_color = na(emaSlow) ? color.orange : color.white)
-    table.cell(statusTable, 0, 12, "Auto HTF", text_color = color.white)
-    table.cell(statusTable, 1, 12, htfTimeframe + " (x" + str.tostring(htfMultiplier) + ")", text_color = color.white)
+    table.cell(statusTable, 0, 8, "เป้าที่ 2", text_color = color.white)
+    table.cell(statusTable, 1, 8, tp2Text, text_color = color.white)
+    table.cell(statusTable, 0, 9, "แรงซื้อ-ขาย", text_color = color.white)
+    table.cell(statusTable, 1, 9, rsiText, text_color = color.white)
+    table.cell(statusTable, 0, 10, "ช่วงแกว่ง/แท่ง", text_color = color.white)
+    table.cell(statusTable, 1, 10, atrText, text_color = color.white)
+    table.cell(statusTable, 0, 11, "ข้อมูลที่โหลด", text_color = color.white)
+    table.cell(statusTable, 1, 11, barsText, text_color = warming ? color.orange : color.white)
+    table.cell(statusTable, 0, 12, "ตัวกรอง TF ใหญ่", text_color = color.white)
+    table.cell(statusTable, 1, 12, htfSourceText, text_color = htfSourceColor)
