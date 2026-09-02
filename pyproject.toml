@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tgxm-bot"
+version = "0.1.0"
+description = "Fail-closed Telegram signal bot that clicks XM WebTrader Demo and verifies with MT5"
+requires-python = ">=3.11"
+dependencies = ["python-dotenv>=1.0,<2"]
+
+[project.optional-dependencies]
+telegram = ["Telethon>=1.44,<2"]
+mt5 = ["MetaTrader5>=5.0.6090,<6; platform_system == 'Windows'"]
+webtrader = ["playwright>=1.55,<2"]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+tgxm = "tgxm.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src"]

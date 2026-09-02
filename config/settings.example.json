@@ -1,0 +1,160 @@
+{
+  "broker": {
+    "adapter": "xm_webtrader",
+    "allowed_demo_accounts_env": "TGXM_ALLOWED_DEMO_ACCOUNTS",
+    "allowed_servers_env": "TGXM_ALLOWED_DEMO_SERVERS",
+    "max_tick_age_seconds": 5,
+    "require_demo": true,
+    "terminal_path": "",
+    "webtrader_allowed_origins": [
+      "https://mt5.xm.com",
+      "https://mt5-1.xm-bz.com"
+    ],
+    "webtrader_browser_channel": "chromium",
+    "webtrader_headless": false,
+    "webtrader_max_price_drift_points": 2,
+    "webtrader_profile_path": "state/webtrader-profile",
+    "webtrader_readback_seconds": 15,
+    "webtrader_require_hedging": true,
+    "webtrader_selector_contract": "xm-mt5-web-v1",
+    "webtrader_timeout_seconds": 20,
+    "webtrader_url": "https://mt5.xm.com/?lang=en"
+  },
+  "channels": {
+    "anabel_signals": {
+      "allowed_symbols": [],
+      "enabled": false,
+      "entry_mode": "manual_review",
+      "ignored_markers": [
+        "(forecast)"
+      ],
+      "max_spread_points": 100,
+      "parser": "narrative_signal_v1",
+      "peer_id": null,
+      "profile_version": "1.0.0",
+      "reject_open_sl": true,
+      "required_markers": [
+        "(signal)"
+      ],
+      "signal_expiry_minutes": 30,
+      "tp_index": 1,
+      "tp_strategy": "single_tp",
+      "trade_enabled": false,
+      "two_level_semantics": "manual_review"
+    },
+    "mr_charlie": {
+      "allowed_symbols": [
+        "GOLD"
+      ],
+      "enabled": true,
+      "entry_mode": "zone_single_market",
+      "ignored_markers": [],
+      "max_spread_points": 100,
+      "parser": "compact_gold_v1",
+      "peer_id": null,
+      "profile_version": "1.0.0",
+      "reject_open_sl": true,
+      "required_markers": [],
+      "signal_expiry_minutes": 30,
+      "tp_index": 1,
+      "tp_strategy": "single_tp",
+      "trade_enabled": false,
+      "two_level_semantics": "zone_single_market"
+    },
+    "united_signals": {
+      "allowed_symbols": [],
+      "enabled": false,
+      "entry_mode": "manual_review",
+      "ignored_markers": [],
+      "max_spread_points": 100,
+      "parser": "suggested_trade_v1",
+      "peer_id": null,
+      "profile_version": "1.0.0",
+      "reject_open_sl": true,
+      "required_markers": [
+        "SUGGESTED TRADE"
+      ],
+      "signal_expiry_minutes": 30,
+      "tp_index": 1,
+      "tp_strategy": "single_tp",
+      "trade_enabled": false,
+      "two_level_semantics": "manual_review"
+    },
+    "vip_gold": {
+      "allowed_symbols": [
+        "GOLD"
+      ],
+      "enabled": false,
+      "entry_mode": "zone_single_market",
+      "ignored_markers": [],
+      "max_spread_points": 100,
+      "parser": "compact_gold_v1",
+      "peer_id": null,
+      "profile_version": "1.0.0",
+      "reject_open_sl": true,
+      "required_markers": [],
+      "signal_expiry_minutes": 30,
+      "tp_index": 1,
+      "tp_strategy": "single_tp",
+      "trade_enabled": false,
+      "two_level_semantics": "zone_single_market"
+    }
+  },
+  "config_version": 2,
+  "execution": {
+    "deviation_points": 20,
+    "management_action_policy": "notify_only",
+    "market_poll_seconds": 1.0,
+    "order_send_retries": 0,
+    "reconcile_on_ambiguous_result": true,
+    "verify_broker_side_protection": true
+  },
+  "indicator": {
+    "atr_period": 14,
+    "atr_stop_loss_multiplier": 1.5,
+    "atr_take_profit_multipliers": [
+      1.5,
+      3.0
+    ],
+    "ema_fast_period": 20,
+    "ema_slow_period": 50,
+    "lookback_bars": 300,
+    "max_bar_age_multiplier": 3,
+    "rsi_overbought": 70,
+    "rsi_oversold": 30,
+    "rsi_period": 14,
+    "symbol": "GOLD",
+    "timeframe": "M15"
+  },
+  "risk": {
+    "daily_loss_limit_percent": null,
+    "fixed_lot": 0.01,
+    "hard_lot_cap": 0.01,
+    "manual_exposure_policy": "block",
+    "max_active_per_channel": 1,
+    "max_active_per_symbol": 1,
+    "max_total_bot_positions": 1,
+    "mode": "fixed_lot",
+    "opposite_side_conflict_policy": "block",
+    "require_numeric_sl": true,
+    "risk_percent": null,
+    "same_side_conflict_policy": "block"
+  },
+  "runtime": {
+    "mode": "observe",
+    "require_single_instance": true
+  },
+  "symbol_aliases": {
+    "GOLD": "GOLD",
+    "XAUUSD": "GOLD"
+  },
+  "telegram": {
+    "alert_chat_id_env": "TGXM_TELEGRAM_ALERT_CHAT_ID",
+    "allowed_admin_ids_env": "TGXM_TELEGRAM_ADMIN_IDS",
+    "api_hash_env": "TGXM_TELEGRAM_API_HASH",
+    "api_id_env": "TGXM_TELEGRAM_API_ID",
+    "catchup_overlap_messages": 50,
+    "max_future_message_skew_seconds": 30,
+    "session_env": "TGXM_TELEGRAM_SESSION"
+  }
+}

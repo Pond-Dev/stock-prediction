@@ -1,11 +1,78 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .venv/
 venv/
 *.egg-info/
-data/raw/
-data/*.db
+
+# Local secrets and credentials.  Keep only sanitized example files in Git.
 .env
+.env.*
+!.env.example
+.envrc
+secrets/
+private/
+credentials*.json
+secrets*.json
+*.secrets.json
+*.secrets.ps1
+*.pem
+*.key
+
+# Persisted operator configuration may contain account/channel identifiers.
+config/settings.local.json
+config/settings.json
+config/*.local.json
+config/*.local.yaml
+config/*.local.yml
+!config/settings.example.json
+
+# Telegram authorization/session state and private exports.
+*.session
+*.session-*
+telegram-export/
+telegram-exports/
+
+# Runtime databases, raw messages, broker evidence, and process state.
+data/raw/
+data/private/
+data/runtime/
+state/
+runtime/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db.lock
+*.sqlite.lock
+*.sqlite3.lock
+
+# Logs, crash dumps, and local captures can expose messages/account details.
+logs/
+*.log
+*.log.*
+*.dmp
+captures/
+screenshots/
+Capture*.PNG
+Capture*.png
+
+# Local backups of any of the files above.
+*.bak
+*.backup
+*.orig
+
+# Local AI-agent guidance. Keep these useful locally without publishing them.
+.claude/
+CLAUDE.md
+AGENTS.md
+CONTEXT.md
+
 node_modules/
 .next/
