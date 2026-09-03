@@ -73,8 +73,20 @@ class MetaTrader5CandleSource:
         policy: DemoAccountPolicy,
         terminal_path: str | None = None,
         mt5_module: Any | None = None,
+        server_utc_offset_minutes: int = 0,
     ) -> None:
+        """``server_utc_offset_minutes`` converts MT5 bar times to true UTC.
+
+        MT5 stamps bars with the *broker server's* clock.  A caller that
+        compares bar times against real UTC - to tell a closed bar from the one
+        still forming, or to judge how stale the newest bar is - must supply the
+        measured offset; :meth:`tgxm.broker.MetaTrader5Broker.resolve_server_utc_offset`
+        produces it.  ``0`` keeps the raw server reading, which is all
+        ``tgxm predict`` needs to shape one printed suggestion.
+        """
+
         self.policy = policy
+        self.server_utc_offset_minutes = int(server_utc_offset_minutes)
         self._oracle = _MetaTrader5CandleOracle(
             policy=policy, terminal_path=terminal_path, mt5_module=mt5_module
         )
@@ -103,9 +115,12 @@ class MetaTrader5CandleSource:
         rows = self._oracle.fetch_rows(exact_symbol, timeframe, count)
         if len(rows) == 0:
             raise IndicatorDataError(f"MT5 returned no candles for {exact_symbol} {timeframe}")
+        offset_seconds = self.server_utc_offset_minutes * 60
         return tuple(
             Candle(
-                time_utc=datetime.fromtimestamp(int(row["time"]), tz=UTC),
+                time_utc=datetime.fromtimestamp(
+                    int(row["time"]) - offset_seconds, tz=UTC
+                ),
                 open=_decimal_from_broker(row["open"], "open"),
                 high=_decimal_from_broker(row["high"], "high"),
                 low=_decimal_from_broker(row["low"], "low"),

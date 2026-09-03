@@ -17,8 +17,10 @@ import tempfile
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlsplit
 
+from tgxm.indicator import HIGHER_TIMEFRAME_LADDER, TIMEFRAME_MINUTES
 
-CONFIG_VERSION = 2
+
+CONFIG_VERSION = 3
 CONFIG_PATH = Path("config/settings.local.json")
 EXAMPLE_CONFIG_PATH = Path("config/settings.example.json")
 
@@ -34,7 +36,9 @@ _RUNTIME_MODES = frozenset({"observe", "shadow", "demo_armed"})
 _TWO_LEVEL_SEMANTICS = frozenset({"zone_single_market", "manual_review"})
 _ENTRY_MODES = frozenset({"zone_single_market", "manual_review"})
 _TP_STRATEGIES = frozenset({"single_tp"})
-_TIMEFRAMES = frozenset({"M1", "M5", "M15", "M30", "H1", "H4", "D1"})
+_TIMEFRAMES = frozenset(TIMEFRAME_MINUTES)
+#: ``auto`` follows the Pine preset ladder for the trading timeframe.
+_AUTO_HIGHER_TIMEFRAME = "auto"
 
 
 class ConfigError(ValueError):
@@ -66,6 +70,7 @@ class BrokerConfig:
     allowed_servers_env: str = "TGXM_ALLOWED_DEMO_SERVERS"
     require_demo: bool = True
     max_tick_age_seconds: int = 5
+    server_utc_offset_minutes: int | None = None
     webtrader_url: str = "https://mt5.xm.com/?lang=en"
     webtrader_allowed_origins: tuple[str, ...] = (
         "https://mt5.xm.com",
@@ -146,6 +151,36 @@ class IndicatorConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class AutoTradeConfig:
+    """Settings for ``tgxm autotrade``: the local indicator strategy worker.
+
+    This worker decides entries itself from MT5 candle history using the rule
+    set in ``pine/ema_rsi_atr_advisory.pine``; it never reads Telegram and is
+    never fed by a Channel Profile.  Its orders go to the local MT5 terminal,
+    so ``broker.adapter`` must be ``mt5`` before it can be enabled.
+
+    Three gates stand between this configuration and a Demo order:
+    ``enabled``, ``trade_enabled``, and the volatile ``--activate-demo``
+    runtime flag that is never persisted.
+    """
+
+    enabled: bool = False
+    trade_enabled: bool = False
+    broker_symbol: str = "XAUUSD"
+    timeframe: str = "M1"
+    higher_timeframe: str = "auto"
+    require_higher_timeframe_agreement: bool = True
+    take_profit_index: int = 2
+    move_stop_to_breakeven_after_tp1: bool = True
+    close_on_opposite_crossover: bool = True
+    poll_seconds: float = 5.0
+    max_open_positions: int = 1
+    cooldown_bars: int = 3
+    max_trades_per_day: int = 10
+    max_spread_points: int = 60
+
+
+@dataclass(frozen=True, slots=True)
 class ExecutionConfig:
     order_send_retries: int = 0
     reconcile_on_ambiguous_result: bool = True
@@ -194,6 +229,7 @@ class AppConfig:
     risk: RiskConfig = field(default_factory=RiskConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     indicator: IndicatorConfig = field(default_factory=IndicatorConfig)
+    autotrade: AutoTradeConfig = field(default_factory=AutoTradeConfig)
 
     @classmethod
     def default(cls) -> AppConfig:
@@ -223,6 +259,7 @@ class AppConfig:
                 "risk",
                 "execution",
                 "indicator",
+                "autotrade",
             },
             "config",
         )
@@ -238,6 +275,7 @@ class AppConfig:
                 "risk",
                 "execution",
                 "indicator",
+                "autotrade",
             },
             "config",
         )
@@ -252,6 +290,7 @@ class AppConfig:
         risk_data = _section(root["risk"], "risk", RiskConfig)
         execution_data = _section(root["execution"], "execution", ExecutionConfig)
         indicator_data = _section(root["indicator"], "indicator", IndicatorConfig)
+        autotrade_data = _section(root["autotrade"], "autotrade", AutoTradeConfig)
         indicator_data["atr_take_profit_multipliers"] = _number_tuple(
             indicator_data["atr_take_profit_multipliers"],
             "indicator.atr_take_profit_multipliers",
@@ -296,6 +335,7 @@ class AppConfig:
             risk=RiskConfig(**risk_data),
             execution=ExecutionConfig(**execution_data),
             indicator=IndicatorConfig(**indicator_data),
+            autotrade=AutoTradeConfig(**autotrade_data),
         )
         return validate_config(config)
 
@@ -463,6 +503,14 @@ def validate_config(config: AppConfig) -> AppConfig:
         "broker.allowed_demo_accounts_env",
     )
     _env_name(config.broker.allowed_servers_env, "broker.allowed_servers_env")
+    server_offset = config.broker.server_utc_offset_minutes
+    if server_offset is not None:
+        offset_minutes = _integer(server_offset, "broker.server_utc_offset_minutes")
+        if abs(offset_minutes) > 14 * 60 or offset_minutes % 15 != 0:
+            raise ConfigError(
+                "broker.server_utc_offset_minutes must be null (measure it at "
+                "runtime) or a multiple of 15 within +/-840"
+            )
     if not _boolean(config.broker.require_demo, "broker.require_demo"):
         raise ConfigError("broker.require_demo must remain true; Live accounts are rejected")
     tick_age = _integer(
@@ -825,6 +873,96 @@ def validate_config(config: AppConfig) -> AppConfig:
     )
     if not 1 <= max_bar_age_multiplier <= 20:
         raise ConfigError("indicator.max_bar_age_multiplier must be between 1 and 20")
+
+    autotrade = config.autotrade
+    autotrade_symbol = _string(autotrade.broker_symbol, "autotrade.broker_symbol")
+    if not _SYMBOL_RE.fullmatch(autotrade_symbol):
+        raise ConfigError(
+            "autotrade.broker_symbol must be the exact uppercase MT5 symbol name"
+        )
+    autotrade_timeframe = _choice(
+        autotrade.timeframe, _TIMEFRAMES, "autotrade.timeframe"
+    )
+    higher = _string(autotrade.higher_timeframe, "autotrade.higher_timeframe")
+    require_higher = _boolean(
+        autotrade.require_higher_timeframe_agreement,
+        "autotrade.require_higher_timeframe_agreement",
+    )
+    if higher == _AUTO_HIGHER_TIMEFRAME:
+        if require_higher and autotrade_timeframe not in HIGHER_TIMEFRAME_LADDER:
+            raise ConfigError(
+                f"autotrade.timeframe {autotrade_timeframe} has no preset higher "
+                "timeframe; choose autotrade.higher_timeframe explicitly or turn "
+                "autotrade.require_higher_timeframe_agreement off"
+            )
+    else:
+        _choice(higher, _TIMEFRAMES, "autotrade.higher_timeframe")
+        if TIMEFRAME_MINUTES[higher] <= TIMEFRAME_MINUTES[autotrade_timeframe]:
+            raise ConfigError(
+                "autotrade.higher_timeframe must be strictly higher than "
+                "autotrade.timeframe"
+            )
+    take_profit_index = _integer(
+        autotrade.take_profit_index, "autotrade.take_profit_index"
+    )
+    if not 1 <= take_profit_index <= len(normalized_multipliers):
+        raise ConfigError(
+            "autotrade.take_profit_index must select one of "
+            f"indicator.atr_take_profit_multipliers (1..{len(normalized_multipliers)})"
+        )
+    _boolean(
+        autotrade.move_stop_to_breakeven_after_tp1,
+        "autotrade.move_stop_to_breakeven_after_tp1",
+    )
+    if autotrade.move_stop_to_breakeven_after_tp1 and take_profit_index < 2:
+        raise ConfigError(
+            "autotrade.move_stop_to_breakeven_after_tp1 needs a take_profit_index "
+            "above the first multiplier; the first one is the breakeven trigger"
+        )
+    _boolean(
+        autotrade.close_on_opposite_crossover, "autotrade.close_on_opposite_crossover"
+    )
+    poll_seconds = _number(autotrade.poll_seconds, "autotrade.poll_seconds")
+    if not 0.2 <= poll_seconds <= 60:
+        raise ConfigError("autotrade.poll_seconds must be between 0.2 and 60")
+    max_open_positions = _integer(
+        autotrade.max_open_positions, "autotrade.max_open_positions"
+    )
+    if not 1 <= max_open_positions <= 10:
+        raise ConfigError("autotrade.max_open_positions must be between 1 and 10")
+    if max_open_positions > _integer(
+        config.risk.max_total_bot_positions, "risk.max_total_bot_positions"
+    ):
+        raise ConfigError(
+            "autotrade.max_open_positions must not exceed risk.max_total_bot_positions"
+        )
+    cooldown_bars = _integer(autotrade.cooldown_bars, "autotrade.cooldown_bars")
+    if not 0 <= cooldown_bars <= 1_000:
+        raise ConfigError("autotrade.cooldown_bars must be between 0 and 1000")
+    max_trades_per_day = _integer(
+        autotrade.max_trades_per_day, "autotrade.max_trades_per_day"
+    )
+    if not 1 <= max_trades_per_day <= 200:
+        raise ConfigError("autotrade.max_trades_per_day must be between 1 and 200")
+    autotrade_spread = _integer(
+        autotrade.max_spread_points, "autotrade.max_spread_points"
+    )
+    if not 1 <= autotrade_spread <= 100_000:
+        raise ConfigError("autotrade.max_spread_points must be between 1 and 100000")
+    if _boolean(autotrade.trade_enabled, "autotrade.trade_enabled") and not _boolean(
+        autotrade.enabled, "autotrade.enabled"
+    ):
+        raise ConfigError("autotrade.trade_enabled requires autotrade.enabled")
+    if autotrade.enabled:
+        if adapter != "mt5":
+            raise ConfigError(
+                "autotrade submits through the local MT5 terminal; set "
+                'broker.adapter to "mt5" before enabling it'
+            )
+        if not _string(
+            config.broker.terminal_path, "broker.terminal_path", allow_empty=True
+        ).strip():
+            raise ConfigError("autotrade.enabled requires broker.terminal_path")
 
     return config
 

@@ -124,6 +124,98 @@ EMA crossover + RSI + ATR แบบ deterministic เพื่อพิมพ์
 ไม่เชื่อมกับเส้นทางส่งออเดอร์ Telegram → XM เลย ผลลัพธ์ `NO_SIGNAL` ถือเป็นผลปกติ ไม่ใช่ข้อผิดพลาด
 ปรับพารามิเตอร์ (symbol, timeframe, ช่วง EMA/RSI/ATR) ได้ในเมนูตั้งค่าที่หัวข้อ `indicator`
 
+## บอทเทรดอัตโนมัติจากอินดิเคเตอร์ (`tgxm autotrade`)
+
+คำสั่งนี้เป็นเส้นทางที่ **สอง** ของโปรเจกต์: ไม่อ่าน Telegram เลย แต่ตัดสินใจเองจากกราฟ MT5
+ด้วยกฎชุดเดียวกับ `pine/ema_rsi_atr_advisory.pine` แล้วส่งออเดอร์เข้าเทอร์มินัล MT5 เดโมที่เปิดอยู่
+
+กฎเข้าไม้ (ต้องครบทุกข้อบนแท่งที่ **ปิดแล้ว** เท่านั้น):
+
+1. EMA เร็วตัด EMA ช้า (ขึ้น = BUY, ลง = SELL)
+2. RSI อยู่ในโซนหนุนทิศทางนั้น (50 < RSI < 70 สำหรับ BUY, 30 < RSI < 50 สำหรับ SELL)
+3. ไทม์เฟรมใหญ่ต้องไปทางเดียวกัน (ค่าเริ่มต้นใช้บันไดแบบ Pine: M1 → M15, M15 → H1)
+
+SL/TP คำนวณจาก ATR เหมือน Pine: `SL = ราคาปิด ∓ ATR×1.5`, TP ที่ส่งให้โบรกเกอร์คือเป้าที่ 2
+(`ATR×3.0`) ส่วนเป้าที่ 1 (`ATR×1.5`) ใช้เป็นจุดเลื่อน SL มาเท่าทุน ทั้งสองค่าปรับได้ในเมนูตั้งค่า
+
+กฎจัดการไม้ที่เปิดอยู่ (ตาม Pine เช่นกัน):
+
+- ราคาแตะเป้าที่ 1 → เลื่อน SL มาที่ราคาเปิด (เท่าทุน)
+- EMA ตัดกลับสวนทาง → ปิดไม้ทันที ไม่รอ SL
+
+### เริ่มใช้งาน
+
+```powershell
+Copy-Item config\settings.example.json config\settings.local.json
+Copy-Item .env.example .env
+```
+
+ใส่เลขบัญชีเดโมและชื่อเซิร์ฟเวอร์ใน `.env` (`TGXM_ALLOWED_DEMO_ACCOUNTS`, `TGXM_ALLOWED_DEMO_SERVERS`)
+แล้วตั้งค่าในเมนู:
+
+```powershell
+.\scripts\tgxm.ps1 --config config\settings.local.json menu
+```
+
+ต้องตั้งอย่างน้อย:
+
+- `broker.adapter` = `mt5` และ `broker.terminal_path` ชี้ไปที่ `terminal64.exe`
+- `autotrade.enabled` = `true`, `autotrade.broker_symbol` = ชื่อ symbol ตรงตัวใน MT5 (เช่น `XAUUSD`)
+- `autotrade.timeframe` = ไทม์เฟรมที่จะเทรด (เช่น `M1`)
+
+**ต้องเปิดปุ่ม `Algo Trading` ในหน้าต่าง MT5 ด้วย** ไม่งั้นบอทจะหยุดพร้อมข้อความ
+`external trading is not enabled` (MT5 ปฏิเสธ `order_send` ทุกครั้งเมื่อปุ่มนี้ปิด)
+
+ลองเดินหนึ่งรอบแบบไม่ส่งออเดอร์:
+
+```powershell
+.\scripts\tgxm.ps1 --config config\settings.local.json autotrade --once
+```
+
+เปิดใช้จริงบนเดโม (ต้องตั้ง `autotrade.trade_enabled=true` ก่อน):
+
+```powershell
+.\scripts\tgxm.ps1 --config config\settings.local.json autotrade --activate-demo
+```
+
+`--activate-demo` เป็นสิทธิ์ชั่วคราวเหมือนคำสั่ง `run` ไม่ถูกบันทึกลง config ต้องใส่ใหม่ทุกครั้ง
+
+### ด่านความปลอดภัยที่ยังบังคับอยู่
+
+- บัญชีต้องเป็น Demo และตรงกับ allowlist ทั้งเลขบัญชีและชื่อเซิร์ฟเวอร์
+- ปริมาณคงที่ `0.01 lot` ภายใต้ `risk.hard_lot_cap`
+- หนึ่งไม้ต่อ symbol (`autotrade.max_open_positions`), เว้นระยะ `cooldown_bars` แท่ง,
+  จำกัดจำนวนไม้ต่อวัน และบล็อกเมื่อสเปรดกว้างเกิน `max_spread_points`
+- ถ้ามีโพซิชันอื่นบน symbol เดียวกันที่ไม่ใช่ของบอท จะไม่เข้าไม้ใหม่
+- บันทึก Order Intent ลง SQLite ก่อนส่งเสมอ โดยผูกกับ "แท่งเทียนนั้นแท่งเดียว" ปิดโปรแกรมแล้วเปิดใหม่
+  ก็เข้าซ้ำแท่งเดิมไม่ได้
+- ผลลัพธ์กำกวมจะกลายเป็น `RECONCILE_REQUIRED` และไม่ส่งซ้ำเด็ดขาด
+- การเลื่อน SL หรือปิดไม้ ต้องพิสูจน์ความเป็นเจ้าของ (magic + comment + intent) ก่อนทุกครั้ง
+
+### เวลาเซิร์ฟเวอร์
+
+MT5 ส่งเวลาของ **เซิร์ฟเวอร์โบรกเกอร์** ไม่ใช่ UTC (เซิร์ฟเวอร์เดโมส่วนใหญ่เป็น UTC+2/+3)
+บอทวัดส่วนต่างนี้เองจากราคาล่าสุดตอนเริ่มทำงาน แล้วใช้ค่านั้นแปลงเวลาแท่งเทียนและ tick
+ถ้าวัดไม่ได้ (ตลาดปิด/ราคาไม่ไหล) จะไม่เริ่มทำงาน ตั้งค่าตายตัวได้ที่
+`broker.server_utc_offset_minutes`
+
+## รันในตัว MT5 เอง (Expert Advisor)
+
+ถ้าไม่อยากเปิดโปรเซส Python ค้างไว้ ใช้ [`mql5/TgxmEmaRsiAtrDemo.mq5`](mql5/TgxmEmaRsiAtrDemo.mq5)
+แทนได้ เป็น EA ที่ใช้กฎเดียวกันทุกข้อ แต่รันอยู่ในเทอร์มินัล MT5 เอง ลากใส่กราฟแล้วจบ
+
+```powershell
+$data = "$env:APPDATA\MetaQuotes\Terminal\<terminal-id>\MQL5\Experts"
+Copy-Item mql5\TgxmEmaRsiAtrDemo.mq5 $data
+& "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"$data\TgxmEmaRsiAtrDemo.mq5" /log
+```
+
+จากนั้นรีเฟรช Navigator ในเทอร์มินัล แล้วลาก `TgxmEmaRsiAtrDemo` ใส่กราฟ XAUUSD M1
+รายละเอียดพารามิเตอร์ ข้อจำกัด และระดับการตรวจสอบอยู่ใน [mql5/README.md](mql5/README.md)
+
+ต่างจากฝั่ง Python ตรงที่ EA ไม่มีฐานข้อมูล Order Intent ของตัวเอง ใช้ประวัติดีลของ MT5
+เป็นแหล่งความจริงแทน และ **ไม่มีเทสต์อัตโนมัติครอบ** (ชุด `pytest` ครอบเฉพาะฝั่ง Python)
+
 ## ข้อจำกัดที่ตั้งใจไว้
 
 - ถ้าผลหลังคลิกไม่ชัดเจน ระบบเปลี่ยนเป็น `RECONCILE_REQUIRED` และไม่คลิกซ้ำอัตโนมัติ

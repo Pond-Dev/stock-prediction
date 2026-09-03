@@ -103,6 +103,96 @@ of it and it does not. Nothing here says the price *will* get there.
   value stays available in TradingView's Data Window as `EMA crossover
   price`.
 
+## Watching 1m / 3m / 5m / 15m without switching charts
+
+The higher-timeframe filter above compares the chart against **one** higher
+timeframe. Settings group *Multi-timeframe agreement* (on by default) reads
+**four** timeframes at once and puts them in a single table row, so comparing
+1m against 3m against 5m no longer means flipping between charts:
+
+```
+แนวโน้มหลาย TF   1m▲  3m▲  5m▲  15m▼ · 3▲/1▼
+```
+
+One `▲`/`▼` per timeframe is that timeframe's own EMA fast/slow relationship,
+followed by the tally. The row is **lime** when every timeframe agrees up,
+**red** when every one agrees down, and **orange** the moment they disagree —
+orange is the "the timeframes are fighting, sit this one out" state.
+
+Which four is up to you (`Timeframe 1`…`Timeframe 4`, defaults 1m/3m/5m/15m),
+and `How many timeframes` trims the row to the first 1–4 of them.
+
+**Put the chart on the lowest timeframe you want to watch.** `request.security`
+can only resolve the chart's own timeframe or above, so a slot *below* the
+chart cannot be read: it shows as `–`, never counts, and the row says
+`– อ่านไม่ได้ (ต่ำกว่าชาร์ต)`. On a **1m** chart all four defaults resolve; on
+a 3m chart the 1m slot goes dark. This is the same refusal as the
+higher-timeframe filter — it never silently substitutes a timeframe it cannot
+evaluate.
+
+By default the row only *shows* — **the BUY/SELL rule is unchanged and
+identical to `tgxm autotrade` / `tgxm predict`**. Turn on "Block signals unless
+enough timeframes agree" to make it a filter: a crossover is declined unless at
+least `Minimum agreeing timeframes` of them already point that way, and
+`ควรทำ` gains a `หลาย TF ✓`/`✗` alongside the RSI and higher-timeframe marks.
+It **fails closed** like the higher-timeframe filter: an unreadable slot never
+counts, so requiring 4 while one slot is dark blocks every signal — the row
+spells that out with `บล็อกทุกสัญญาณ` rather than letting you wonder.
+
+## Supply / demand zones: labelled boxes price bounces between
+
+Settings group *Supply / demand zones* (on by default) draws red/blue boxes of
+the kind you may know from Smart-Money-Concepts indicators, built from this
+script's own data — **one set per watched timeframe**, using the same
+`Timeframe 1`…`Timeframe 4` as the multi-timeframe row above:
+
+- Each timeframe contributes its **two most recent confirmed swing highs and
+  swing lows** (`ta.pivothigh`/`ta.pivotlow`, "Swing length" bars each side,
+  evaluated in that timeframe's own context).
+- Every box carries the label of the timeframe that produced it — `15m ต้าน`,
+  `3m รับ` — so you can tell a 1m wiggle from a 15m structure at a glance.
+- **Red (ต้าน) means the level is above price, blue (รับ) means below.** A
+  level is classified by which side of price it sits on right now, so a swing
+  high price has broken through is *not deleted* the way an
+  "unmitigated order block" rule deletes it — it flips to blue and keeps
+  marking the level on the way back down. That is why there is nearly always a
+  box on both sides, even during a one-way run.
+- Box thickness comes from the ATR of the timeframe it came from ("Box
+  thickness", 0.25 ATR by default), so a 15m box is naturally wider than a 1m
+  one, and two timeframes marking the same price (within 0.15 ATR) collapse to
+  one box keeping the higher timeframe's label.
+- Only the **nearest "Show only the nearest"** boxes (4 by default) are drawn.
+  The nearest level above price and the nearest below are each reserved a
+  slot, so the range you are trading in is never shown with one side missing.
+- Because a swing is only confirmed "Swing length" bars later on its own
+  timeframe, a box appears late but is never redrawn retroactively — no
+  repainting. A 15m box needs five closed 15m bars.
+
+Boxes are redrawn from scratch on the last bar rather than accumulated
+historically: they mark where price is *now*, not every level that ever formed.
+
+The gap between the nearest red box above and the nearest blue box below is
+the range price is currently trading in. The table's `แนวรับ/แนวต้าน` row
+names both, with the timeframe each came from and the distance in ATR:
+
+```
+แนวรับ/แนวต้าน   ต้าน 15m 4394.10 (ห่าง 0.9 ATR) · รับ 3m 4386.75 (ห่าง 2.7 ATR) · กรอบกว้าง 3.6 ATR
+```
+
+Within "Near a box" (0.5 ATR by default) the row turns orange and:
+
+- while waiting, `ควรทำ` adds `ติดแนวต้าน ⚠` / `ติดแนวรับ ⚠` when the next
+  signal would fire straight into the opposite box;
+- while holding a trade, `ควรทำ` turns orange with `ใกล้แนวต้าน ระวังเด้งกลับ`
+  (or แนวรับ for a SELL).
+
+By default that is all the boxes do — **the BUY/SELL rule itself is unchanged
+and identical to `tgxm autotrade` / `tgxm predict`**. Turn on "Block BUY near
+ต้าน / SELL near รับ" to make them a third filter (a crossover within
+"Near a box" of the opposite box is declined, and the `⚠` becomes `✗`); the
+"Show raw crossovers a filter blocked" debug markers cover it like the other
+two. That makes the chart stricter than the bot, which has no zone filter.
+
 ## Trade management after entry (TP1 → breakeven → TP2)
 
 Once a BUY/SELL confirms, the indicator keeps tracking it bar by bar, not
@@ -137,10 +227,41 @@ Separate alerts exist for each step (TP1 hit, target hit, stopped out), on
 top of the entry alerts — set all of them to **Once Per Bar Close** for the
 same repainting reason as the entry alerts, described below.
 
+## Two table layouts
+
+"Status table shows" picks what the table is for:
+
+- **Everything** (default) — every row listed below.
+- **Zones only (scalping)** — drops the rows you do not re-read every minute
+  and turns the drawn boxes into a price ladder instead, highest first, with a
+  `► ราคา` row marking where price sits between them:
+
+  ```
+  ตอนนี้          รอจังหวะ — ยังไม่มีไม้
+  ควรทำ           รอ SELL · EMA ต้องตัดลง ✗ · RSI ✗ · 15m ✓
+  15m ต้าน        4408.20 · +1.8 ATR
+  5m ต้าน         4404.10 · +0.4 ATR
+  ► ราคา          4402.92 · ATR 3.01
+  1m รับ          4397.54 · −1.8 ATR
+  15m รับ         4393.77 · −3.1 ATR
+  ที่ว่างในกรอบ     บน 0.4 ATR · ล่าง 1.8 ATR → ชนต้าน ซื้อเสี่ยง
+  ```
+
+  The last row is the one to read before entering: how much room is left to
+  the box above and below, and a verdict — `ชนต้าน ซื้อเสี่ยง` /
+  `ชนรับ ขายเสี่ยง` (orange, within 0.3 ATR of that side),
+  `บีบระหว่างสองกล่อง` when both are that close, or `กลางกรอบ`. When one side
+  has no box at all the row says `บนโล่ง`/`ล่างโล่ง` and the verdict becomes
+  `อยู่เหนือทุกกล่อง ไม่มีเป้าบน` / `อยู่ใต้ทุกกล่อง ไม่มีตัวรับ` — price has
+  broken past every level that side, so there is nothing left to bounce off.
+
+  `ตอนนี้` and `ควรทำ` stay, because the boxes never produce a signal on their
+  own — see below.
+
 ## Reading the table
 
-The top two rows answer "what now?" so you never have to derive it from the
-indicator rows underneath:
+In the **Everything** layout the top two rows answer "what now?" so you never
+have to derive it from the indicator rows underneath:
 
 | Row | What it tells you |
 |---|---|
@@ -152,6 +273,8 @@ indicator rows underneath:
 | `ช่วงแกว่ง/แท่ง` | ATR, plus how far the Stop Loss would sit from entry right now. |
 | `ข้อมูลที่โหลด` | Bars available; turns orange while the slow EMA is still warming up. |
 | `ตัวกรอง TF ใหญ่` | Which higher timeframe is in use and where it came from. |
+| `แนวรับ/แนวต้าน` | Nearest box above (ต้าน) and below (รับ), each with the timeframe it came from and the distance in ATR, plus the width of the range between them; orange when price is near either. |
+| `แนวโน้มหลาย TF` | One ▲/▼ per watched timeframe plus the tally; lime/red when they all agree, orange when they disagree or a slot is unreadable. |
 
 `ตอนนี้` only changes on a *confirmed* signal (passed both filters) or when
 the raw EMA relationship that produced it reverses. `เทรนด์ชาร์ตนี้` and

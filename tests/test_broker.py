@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from tgxm.broker import (
+    detect_server_utc_offset_minutes,
     AccountNotAllowlisted,
     AccountSnapshot,
     BrokerAdapter,
@@ -754,3 +755,210 @@ def test_mt5_import_is_lazy_and_missing_optional_package_is_clear(monkeypatch) -
     monkeypatch.setattr("tgxm.broker.importlib.import_module", missing)
     with pytest.raises(BrokerUnavailableError, match="optional"):
         broker.discover_account()
+
+
+# -- broker server clock ----------------------------------------------------
+
+
+class ManagedStubMT5(StubMT5):
+    """Adds protection changes and position closes to the MT5 stub."""
+
+    TRADE_ACTION_SLTP = 2
+
+    def order_send(self, payload: dict[str, object]) -> SimpleNamespace:
+        action = payload.get("action")
+        if action == self.TRADE_ACTION_SLTP:
+            self.order_send_calls.append(payload)
+            for item in self.open_positions:
+                if item.ticket == payload["position"]:
+                    item.sl = payload["sl"]
+                    item.tp = payload["tp"]
+            return SimpleNamespace(
+                retcode=self.TRADE_RETCODE_DONE, comment="sltp", price=0, volume=0,
+                order=0, deal=0,
+            )
+        if action == self.TRADE_ACTION_DEAL and "position" in payload:
+            self.order_send_calls.append(payload)
+            if not self.close_leaves_position_open:
+                self.open_positions = [
+                    item
+                    for item in self.open_positions
+                    if item.ticket != payload["position"]
+                ]
+            return SimpleNamespace(
+                retcode=self.close_retcode,
+                comment="close",
+                price=payload.get("price", 4601.0),
+                volume=payload["volume"],
+                order=7100,
+                deal=7101,
+            )
+        return super().order_send(payload)
+
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(**kwargs)  # type: ignore[arg-type]
+        self.close_retcode = self.TRADE_RETCODE_DONE
+        self.close_leaves_position_open = False
+
+
+def managed_broker(
+    module: ManagedStubMT5, **changes: object
+) -> MetaTrader5Broker:
+    return MetaTrader5Broker(
+        policy=policy(),
+        mt5_module=module,
+        clock=lambda: NOW,
+        **changes,  # type: ignore[arg-type]
+    )
+
+
+def open_stub_position(module: ManagedStubMT5, **changes: object) -> None:
+    values: dict[str, object] = {
+        "ticket": 7001,
+        "identifier": 7001,
+        "symbol": "GOLD",
+        "type": module.POSITION_TYPE_BUY,
+        "volume": 0.01,
+        "price_open": 4601.00,
+        "sl": 4590.00,
+        "tp": 4620.00,
+        "magic": 17001,
+        "comment": "tgxa-owned",
+        "time_msc": int(NOW.timestamp() * 1000),
+    }
+    values.update(changes)
+    module.open_positions.append(SimpleNamespace(**values))
+
+
+def test_server_offset_is_measured_from_a_fresh_quote() -> None:
+    server_epoch = (NOW + timedelta(hours=3)).timestamp() + 1
+    assert (
+        detect_server_utc_offset_minutes(
+            server_epoch, NOW, max_residual_seconds=Decimal("5")
+        )
+        == 180
+    )
+
+
+def test_server_offset_measurement_rejects_a_stalled_feed() -> None:
+    stale = (NOW + timedelta(hours=3)).timestamp() - 400
+    with pytest.raises(StaleTickError):
+        detect_server_utc_offset_minutes(stale, NOW, max_residual_seconds=Decimal("5"))
+
+
+def test_server_offset_measurement_rejects_an_implausible_clock() -> None:
+    absurd = (NOW + timedelta(days=3)).timestamp()
+    with pytest.raises(BrokerSafetyError):
+        detect_server_utc_offset_minutes(absurd, NOW, max_residual_seconds=Decimal("5"))
+
+
+def test_measured_offset_makes_a_server_time_tick_read_as_fresh() -> None:
+    module = ManagedStubMT5()
+    ahead = int((NOW + timedelta(hours=3)).timestamp() * 1000)
+    module.symbol_info_tick = lambda name: (  # type: ignore[assignment]
+        None
+        if name != "GOLD"
+        else SimpleNamespace(bid=4601.00, ask=4601.59, time_msc=ahead)
+    )
+    broker = managed_broker(module, server_utc_offset_minutes=None)
+    tick = broker.get_tick("GOLD")
+    assert broker.server_utc_offset_minutes == 180
+    assert broker.server_offset_source == "detected"
+    assert tick.time_utc == NOW
+
+
+def test_unshifted_server_time_fails_the_freshness_gate() -> None:
+    module = ManagedStubMT5()
+    ahead = int((NOW + timedelta(hours=3)).timestamp() * 1000)
+    module.symbol_info_tick = lambda name: (  # type: ignore[assignment]
+        None
+        if name != "GOLD"
+        else SimpleNamespace(bid=4601.00, ask=4601.59, time_msc=ahead)
+    )
+    broker = managed_broker(module)
+    with pytest.raises(StaleTickError):
+        broker.check_market_order(request(magic=17001))
+
+
+# -- position management ----------------------------------------------------
+
+
+def test_breakeven_stop_is_applied_and_read_back() -> None:
+    module = ManagedStubMT5()
+    open_stub_position(module)
+    broker = managed_broker(module)
+    (position,) = broker.list_open_positions("GOLD")
+
+    updated = broker.modify_position_protection(
+        position,
+        stop_loss=Decimal("4601.00") - Decimal("1.00"),
+        take_profit=position.take_profit,
+        expected_magic=17001,
+        expected_client_reference="tgxa-owned",
+    )
+    assert updated.stop_loss == Decimal("4600.00")
+    assert updated.take_profit == Decimal("4620.00")
+    assert module.order_send_calls[-1]["action"] == module.TRADE_ACTION_SLTP
+
+
+def test_protection_change_refuses_a_position_the_bot_does_not_own() -> None:
+    module = ManagedStubMT5()
+    open_stub_position(module, magic=0, comment="manual")
+    broker = managed_broker(module)
+    (position,) = broker.list_open_positions("GOLD")
+    with pytest.raises(BrokerSafetyError, match="not owned"):
+        broker.modify_position_protection(
+            position,
+            stop_loss=Decimal("4600.00"),
+            take_profit=None,
+            expected_magic=17001,
+            expected_client_reference="tgxa-owned",
+        )
+    assert module.order_send_calls == []
+
+
+def test_protection_change_refuses_a_stop_on_the_wrong_side() -> None:
+    module = ManagedStubMT5()
+    open_stub_position(module)
+    broker = managed_broker(module)
+    (position,) = broker.list_open_positions("GOLD")
+    with pytest.raises(BrokerSafetyError, match="below the current Bid"):
+        broker.modify_position_protection(
+            position,
+            stop_loss=Decimal("4700.00"),
+            take_profit=None,
+            expected_magic=17001,
+            expected_client_reference="tgxa-owned",
+        )
+    assert module.order_send_calls == []
+
+
+def test_close_position_is_accepted_only_when_the_ticket_is_gone() -> None:
+    module = ManagedStubMT5()
+    open_stub_position(module)
+    broker = managed_broker(module)
+    (position,) = broker.list_open_positions("GOLD")
+
+    result = broker.close_position(
+        position, expected_magic=17001, expected_client_reference="tgxa-owned"
+    )
+    assert result.outcome is BrokerOutcome.ACCEPTED
+    assert result.stage == "close_position"
+    assert broker.list_open_positions("GOLD") == ()
+    payload = module.order_send_calls[-1]
+    assert payload["position"] == 7001
+    assert payload["type"] == module.ORDER_TYPE_SELL
+
+
+def test_close_that_leaves_the_position_open_requires_reconciliation() -> None:
+    module = ManagedStubMT5()
+    module.close_leaves_position_open = True
+    open_stub_position(module)
+    broker = managed_broker(module)
+    (position,) = broker.list_open_positions("GOLD")
+
+    result = broker.close_position(
+        position, expected_magic=17001, expected_client_reference="tgxa-owned"
+    )
+    assert result.outcome is BrokerOutcome.RECONCILE_REQUIRED
+    assert len(module.order_send_calls) == 1

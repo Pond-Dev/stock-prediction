@@ -42,6 +42,122 @@ TIMEFRAME_MINUTES: Mapping[str, int] = {
 }
 
 
+#: Pine `ladderRung`: the higher timeframe a trader normally checks next, keyed
+#: on the chart's own timeframe (1m/2m/3m -> 15m, 5m/10m/15m -> 1H,
+#: 30m/45m/1H -> 4H, 2H-4H -> 1D).  Only rungs this module can evaluate appear
+#: here, so ``D1`` has no entry: its Pine rung (1W) is not a supported
+#: timeframe and a caller must not silently fall back to a lower one.
+HIGHER_TIMEFRAME_LADDER: Mapping[str, str] = {
+    "M1": "M15",
+    "M5": "H1",
+    "M15": "H1",
+    "M30": "H4",
+    "H1": "H4",
+    "H4": "D1",
+}
+
+
+class TrendState(StrEnum):
+    """Direction of the EMA pair on one timeframe, or ``UNKNOWN``.
+
+    ``UNKNOWN`` is not "no opinion, carry on": it means the timeframe could not
+    be judged (too little history, or the two EMAs are exactly equal).  A
+    caller using this as a filter must treat it as a block, the way the Pine
+    script blocks every signal when its higher timeframe is invalid.
+    """
+
+    UP = "UP"
+    DOWN = "DOWN"
+    UNKNOWN = "UNKNOWN"
+
+
+class CrossoverState(StrEnum):
+    """Raw EMA cross on the latest candle, before any filter.
+
+    This is Pine's `ta.crossover`/`ta.crossunder` on its own.  The entry rule
+    adds the RSI and higher-timeframe filters on top; the exit rule ("close
+    when the EMAs cross back") deliberately does not, exactly as the Pine
+    script's `reversed` branch ignores them.
+    """
+
+    UP = "UP"
+    DOWN = "DOWN"
+    NONE = "NONE"
+
+
+def crossover_state(
+    candles: Sequence[Candle],
+    *,
+    ema_fast_period: int,
+    ema_slow_period: int,
+) -> CrossoverState:
+    """Report whether the EMA pair crossed on the last candle of ``candles``."""
+
+    fast_period = int(ema_fast_period)
+    slow_period = int(ema_slow_period)
+    if min(fast_period, slow_period) < 1:
+        raise IndicatorError("indicator periods must be positive")
+    if fast_period >= slow_period:
+        raise IndicatorError("ema_fast_period must be less than ema_slow_period")
+    if len(candles) < 2:
+        return CrossoverState.NONE
+    _validate_candle_order(candles)
+    closes = [candle.close for candle in candles]
+    fast = _ema_series(closes, fast_period)
+    slow = _ema_series(closes, slow_period)
+    fast_now, slow_now = fast[-1], slow[-1]
+    fast_previous, slow_previous = fast[-2], slow[-2]
+    if None in (fast_now, slow_now, fast_previous, slow_previous):
+        return CrossoverState.NONE
+    assert fast_now is not None and slow_now is not None
+    assert fast_previous is not None and slow_previous is not None
+    if fast_previous <= slow_previous and fast_now > slow_now:
+        return CrossoverState.UP
+    if fast_previous >= slow_previous and fast_now < slow_now:
+        return CrossoverState.DOWN
+    return CrossoverState.NONE
+
+
+def higher_timeframe(timeframe: str) -> str:
+    """Return the Pine preset ladder's higher timeframe for ``timeframe``."""
+
+    rung = HIGHER_TIMEFRAME_LADDER.get(str(timeframe))
+    if rung is None:
+        raise IndicatorError(
+            f"no supported higher timeframe for {timeframe}; choose one explicitly"
+        )
+    return rung
+
+
+def trend_state(
+    candles: Sequence[Candle],
+    *,
+    ema_fast_period: int,
+    ema_slow_period: int,
+) -> TrendState:
+    """Judge one timeframe by its EMA pair, as Pine's `htfBullish`/`htfBearish`.
+
+    Returns :attr:`TrendState.UNKNOWN` rather than guessing when the history is
+    too short to define both EMAs or the two are exactly equal.
+    """
+
+    fast_period = int(ema_fast_period)
+    slow_period = int(ema_slow_period)
+    if min(fast_period, slow_period) < 1:
+        raise IndicatorError("indicator periods must be positive")
+    if fast_period >= slow_period:
+        raise IndicatorError("ema_fast_period must be less than ema_slow_period")
+    if not candles:
+        return TrendState.UNKNOWN
+    _validate_candle_order(candles)
+    closes = [candle.close for candle in candles]
+    fast = _ema_series(closes, fast_period)[-1]
+    slow = _ema_series(closes, slow_period)[-1]
+    if fast is None or slow is None or fast == slow:
+        return TrendState.UNKNOWN
+    return TrendState.UP if fast > slow else TrendState.DOWN
+
+
 class IndicatorSettings(Protocol):
     """Structural settings shape; :class:`tgxm.config.IndicatorConfig` satisfies it."""
 
@@ -219,8 +335,15 @@ def predict(
     settings: IndicatorSettings,
     *,
     now_utc: datetime | None = None,
+    higher_timeframe_trend: TrendState | None = None,
 ) -> Prediction:
     """Evaluate one deterministic EMA-crossover + RSI + ATR rule set.
+
+    ``higher_timeframe_trend`` is the optional higher-timeframe filter from the
+    Pine script.  Left at ``None`` the filter is off, exactly as the Pine
+    script behaves with ``useHtfFilter`` unticked.  Supplied, it must agree
+    with the crossover direction; :attr:`TrendState.UNKNOWN` blocks every
+    signal because an unjudgeable higher timeframe is not agreement.
 
     This never raises for a "no trade" outcome; it returns
     ``PredictionState.NO_SIGNAL`` with a human-readable ``reason`` so a caller
@@ -334,6 +457,7 @@ def predict(
                 f"band (50, {rsi_overbought})"
             )
         side = PredictionState.BUY
+        required_trend = TrendState.UP
     else:
         if not (rsi_oversold < rsi_now < Decimal(50)):
             return no_signal(
@@ -341,6 +465,14 @@ def predict(
                 f"band ({rsi_oversold}, 50)"
             )
         side = PredictionState.SELL
+        required_trend = TrendState.DOWN
+
+    if higher_timeframe_trend is not None and higher_timeframe_trend is not required_trend:
+        return no_signal(
+            f"higher_timeframe_filter_blocked: higher timeframe is "
+            f"{TrendState(higher_timeframe_trend).value}, {side.value} needs "
+            f"{required_trend.value}"
+        )
 
     sl_multiplier = _to_decimal(settings.atr_stop_loss_multiplier, "atr_stop_loss_multiplier")
     if sl_multiplier <= 0:
@@ -384,10 +516,16 @@ def predict(
 
 __all__ = [
     "Candle",
+    "CrossoverState",
+    "HIGHER_TIMEFRAME_LADDER",
     "IndicatorError",
     "IndicatorSettings",
     "Prediction",
     "PredictionState",
     "TIMEFRAME_MINUTES",
+    "TrendState",
+    "crossover_state",
+    "higher_timeframe",
     "predict",
+    "trend_state",
 ]

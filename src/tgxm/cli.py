@@ -12,16 +12,19 @@ import platform
 import shutil
 import struct
 import sys
+import time
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 from typing import Any, Sequence
 
+from tgxm.autotrader import AutoTradeDecision, AutoTradeStatus, AutoTrader
 from tgxm.broker import (
     BrokerError,
     BrokerSafetyError,
     DemoAccountPolicy,
+    MetaTrader5Broker,
 )
 from tgxm.config import CONFIG_PATH, AppConfig, ConfigError, load_config, save_config
 from tgxm.dashboard import DashboardError, run_dashboard
@@ -539,6 +542,132 @@ def _webtrader_demo_policy(config: AppConfig) -> DemoAccountPolicy:
     )
 
 
+def _autotrade_demo_policy(config: AppConfig) -> DemoAccountPolicy:
+    """Demo allowlist narrowed to the one symbol the strategy may touch."""
+
+    accounts = load_integer_allowlist(config.broker.allowed_demo_accounts_env)
+    servers = load_text_allowlist(config.broker.allowed_servers_env)
+    return DemoAccountPolicy(
+        allowed_demo_accounts=frozenset(str(value) for value in accounts),
+        allowed_servers=frozenset(servers),
+        allowed_symbols=frozenset({config.autotrade.broker_symbol}),
+        max_tick_age_seconds=config.broker.max_tick_age_seconds,
+    )
+
+
+def _autotrade_report_key(decision: AutoTradeDecision) -> tuple[Any, ...]:
+    """What makes one cycle worth printing again."""
+
+    return (
+        decision.status.value,
+        decision.reason,
+        decision.bar_time_utc,
+        tuple(item.action.value + item.position_id for item in decision.management),
+    )
+
+
+def command_autotrade(args: argparse.Namespace) -> int:
+    """Run the local indicator strategy against the MT5 Demo terminal.
+
+    Reads no Telegram content.  Submission still requires
+    ``autotrade.enabled``, ``autotrade.trade_enabled``, the volatile
+    ``--activate-demo`` flag, and every broker-side Demo gate.
+    """
+
+    from tgxm.runtime import RuntimeAlreadyRunningError, SingleInstanceLock
+
+    load_environment_file(_env_file(args))
+    config = load_config(_config_path(args))
+    if not config.autotrade.enabled:
+        raise ConfigError(
+            "autotrade is disabled; set autotrade.enabled in the configuration menu"
+        )
+    if args.activate_demo and not config.autotrade.trade_enabled:
+        raise ConfigError("--activate-demo requires autotrade.trade_enabled")
+    if not config.broker.terminal_path.strip():
+        raise ConfigError("autotrade requires broker.terminal_path")
+
+    symbol = config.autotrade.broker_symbol
+    policy = _autotrade_demo_policy(config)
+    broker = MetaTrader5Broker(
+        policy=policy,
+        terminal_path=config.broker.terminal_path,
+        server_utc_offset_minutes=config.broker.server_utc_offset_minutes,
+    )
+    lock = SingleInstanceLock(Path(args.db).with_suffix(".autotrade.lock"))
+    if config.runtime.require_single_instance:
+        try:
+            lock.acquire()
+        except RuntimeAlreadyRunningError as exc:
+            raise BotRuntimeError(str(exc)) from exc
+    source: MetaTrader5CandleSource | None = None
+    try:
+        broker.initialize()
+        try:
+            account = broker.discover_account()
+        except BrokerSafetyError as exc:
+            if "external trading is not enabled" in str(exc):
+                raise BrokerSafetyError(
+                    "external trading is not enabled: turn on the Algo Trading "
+                    "button in the MT5 window (Tools > Options > Expert Advisors "
+                    "> Allow algorithmic trading)"
+                ) from exc
+            raise
+        offset = broker.resolve_server_utc_offset(symbol)
+        source = MetaTrader5CandleSource(
+            policy=policy,
+            terminal_path=config.broker.terminal_path,
+            server_utc_offset_minutes=offset,
+        )
+        source.initialize()
+        with SQLiteStore(Path(args.db)) as store:
+            trader = AutoTrader(
+                config=config,
+                store=store,
+                broker=broker,
+                candle_source=source,
+                position_manager=broker,
+                demo_active=args.activate_demo,
+            )
+            _print_json(
+                {
+                    "started": True,
+                    "symbol": symbol,
+                    "timeframe": config.autotrade.timeframe,
+                    "higher_timeframe": trader.higher_timeframe,
+                    "server_utc_offset_minutes": offset,
+                    "server_offset_source": broker.server_offset_source,
+                    "account_is_demo": account.is_demo,
+                    "account_margin_mode": account.margin_mode,
+                    "trade_enabled": config.autotrade.trade_enabled,
+                    "demo_active": bool(args.activate_demo),
+                    "fixed_lot": str(config.risk.fixed_lot),
+                    "once": bool(args.once),
+                }
+            )
+            previous: tuple[Any, ...] | None = None
+            while True:
+                decision = trader.run_cycle()
+                key = _autotrade_report_key(decision)
+                if key != previous:
+                    _print_json(decision.to_dict())
+                    previous = key
+                if args.once:
+                    break
+                if decision.status is AutoTradeStatus.DISABLED:
+                    break
+                time.sleep(float(config.autotrade.poll_seconds))
+    except KeyboardInterrupt:
+        _print_json({"stopped": "keyboard interrupt", "orders_are_never_retried": True})
+    finally:
+        if source is not None:
+            source.shutdown()
+        broker.shutdown()
+        if config.runtime.require_single_instance:
+            lock.release()
+    return 0
+
+
 def command_webtrader_login(args: argparse.Namespace) -> int:
     """Open the dedicated headed profile and verify a manual Demo login."""
 
@@ -712,6 +841,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--port", type=int, default=8765, help="loopback dashboard port (default: 8765)"
     )
     dashboard.set_defaults(func=command_dashboard)
+
+    autotrade = commands.add_parser(
+        "autotrade",
+        help="run the local EMA/RSI/ATR strategy against the MT5 Demo terminal",
+    )
+    autotrade.add_argument(
+        "--db", default="state/tgxm.sqlite3", help="ignored local SQLite database path"
+    )
+    autotrade.add_argument(
+        "--once", action="store_true", help="evaluate one cycle and exit"
+    )
+    autotrade.add_argument(
+        "--activate-demo",
+        action="store_true",
+        help=(
+            "volatile authorization to submit and manage Demo orders; requires "
+            "autotrade.trade_enabled and exact account/server allowlists"
+        ),
+    )
+    autotrade.set_defaults(func=command_autotrade)
 
     run = commands.add_parser(
         "run", help="stream configured Telegram rooms (Observe/Shadow/Demo Armed)"

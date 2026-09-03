@@ -310,3 +310,40 @@ def test_load_rejects_duplicate_keys_and_non_finite_numbers(tmp_path: Path) -> N
 def test_load_missing_file_has_actionable_error(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="does not exist"):
         load_config(tmp_path / "missing.json")
+
+
+def test_autotrade_defaults_are_off_and_editable() -> None:
+    config = AppConfig.default()
+
+    assert config.autotrade.enabled is False
+    assert config.autotrade.trade_enabled is False
+    assert config.autotrade.timeframe == "M1"
+    assert config.autotrade.higher_timeframe == "auto"
+    assert config.autotrade.require_higher_timeframe_agreement is True
+    assert config.autotrade.move_stop_to_breakeven_after_tp1 is True
+    assert config.autotrade.close_on_opposite_crossover is True
+    assert config.broker.server_utc_offset_minutes is None
+
+
+def test_server_utc_offset_must_sit_on_a_plausible_grid() -> None:
+    config = AppConfig.default()
+
+    assert _changed(config, "broker", "server_utc_offset_minutes", 180)
+    with pytest.raises(ConfigError, match="server_utc_offset_minutes"):
+        _changed(config, "broker", "server_utc_offset_minutes", 7)
+    with pytest.raises(ConfigError, match="server_utc_offset_minutes"):
+        _changed(config, "broker", "server_utc_offset_minutes", 2000)
+
+
+def test_autotrade_section_rejects_unknown_fields() -> None:
+    config = AppConfig.default()
+    data = config.to_dict()
+    data["autotrade"]["martingale"] = True
+    with pytest.raises(ConfigError, match="unknown field"):
+        AppConfig.from_dict(data)
+
+
+def test_autotrade_open_positions_cannot_exceed_the_risk_cap() -> None:
+    config = AppConfig.default()
+    with pytest.raises(ConfigError, match="max_total_bot_positions"):
+        _changed(config, "autotrade", "max_open_positions", 3)

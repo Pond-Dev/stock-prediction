@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 import importlib
+import math
 from types import MappingProxyType
 from typing import Any, Callable, Deque, Iterable, Mapping, Protocol, runtime_checkable
 
@@ -359,6 +360,35 @@ class BrokerAdapter(Protocol):
     def submit_market_order(self, request: MarketOrderRequest) -> BrokerResult: ...
 
 
+@runtime_checkable
+class PositionManager(Protocol):
+    """Mutations on an *already open* position the bot has proved it owns.
+
+    Deliberately separate from :class:`BrokerAdapter`: an adapter that can only
+    submit (the WebTrader click surface) must not gain these by implementing
+    the execution protocol, and a caller that only submits cannot reach them.
+    """
+
+    def modify_position_protection(
+        self,
+        position: PositionSnapshot,
+        *,
+        stop_loss: Decimal,
+        take_profit: Decimal | None,
+        expected_magic: int,
+        expected_client_reference: str,
+    ) -> PositionSnapshot: ...
+
+    def close_position(
+        self,
+        position: PositionSnapshot,
+        *,
+        expected_magic: int,
+        expected_client_reference: str,
+        deviation_points: int = 0,
+    ) -> BrokerResult: ...
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -391,6 +421,73 @@ def _side_text(value: Any) -> str:
     if side not in {"BUY", "SELL"}:
         raise ValueError("side must be BUY or SELL")
     return side
+
+
+#: MT5 reports tick, bar, and position timestamps in *broker server* time and
+#: exposes no offset field, so the offset has to be measured against a trusted
+#: UTC clock.  Server clocks sit on whole or half hours in practice; 15 minutes
+#: is the finest grid worth trusting and keeps the rounding residual meaningful
+#: as a freshness check.
+#: ``ENUM_SYMBOL_ORDER_MODE`` bits as documented for MQL5.  The MetaTrader5
+#: Python package returns a symbol's ``order_mode`` bitmask but does not export
+#: the names of its bits, so these are the fallback when the module lacks them;
+#: a module that does define them still wins.
+SYMBOL_ORDER_MARKET_FLAG = 1
+SYMBOL_ORDER_SL_FLAG = 16
+SYMBOL_ORDER_TP_FLAG = 32
+
+SERVER_OFFSET_GRANULARITY_MINUTES = 15
+
+#: Wider than any real broker offset (UTC-12..UTC+14), so a measurement taken
+#: against a frozen feed - a closed market, a disconnected terminal - lands
+#: outside it and fails closed instead of inventing a plausible clock.
+MAX_SERVER_OFFSET_MINUTES = 14 * 60
+
+
+def detect_server_utc_offset_minutes(
+    server_epoch_seconds: float,
+    now_utc: datetime,
+    *,
+    max_residual_seconds: Decimal,
+) -> int:
+    """Measure the broker server clock's offset from UTC using a fresh quote.
+
+    ``server_epoch_seconds`` is an MT5 timestamp: seconds since the epoch as
+    *counted on the server's clock*.  The difference from real UTC is the
+    offset plus however stale the quote is; rounding to
+    :data:`SERVER_OFFSET_GRANULARITY_MINUTES` separates the two, and the
+    leftover residual is exactly the quote's age.
+
+    Fails closed rather than guessing: a residual beyond the policy's tick-age
+    limit means the newest quote is not fresh (a closed market or a stalled
+    feed), and an implausible offset means the measurement is not a clock
+    offset at all.
+    """
+
+    if now_utc.tzinfo is None or now_utc.utcoffset() is None:
+        raise ValueError("now_utc must be timezone-aware")
+    limit = _decimal(max_residual_seconds, "max_residual_seconds")
+    if limit <= 0:
+        raise ValueError("max_residual_seconds must be positive")
+    difference_seconds = float(server_epoch_seconds) - now_utc.timestamp()
+    granularity_seconds = SERVER_OFFSET_GRANULARITY_MINUTES * 60
+    steps = math.floor(difference_seconds / granularity_seconds + 0.5)
+    offset_minutes = int(steps * SERVER_OFFSET_GRANULARITY_MINUTES)
+    if abs(offset_minutes) > MAX_SERVER_OFFSET_MINUTES:
+        raise BrokerSafetyError(
+            "broker server time is not a plausible clock offset from UTC "
+            f"({offset_minutes} minutes); the quote feed is probably stalled"
+        )
+    residual_seconds = Decimal(
+        str(difference_seconds - steps * granularity_seconds)
+    )
+    if abs(residual_seconds) > limit:
+        raise StaleTickError(
+            "cannot measure the broker server clock: the newest quote is "
+            f"{residual_seconds} seconds off the {offset_minutes}-minute grid, "
+            f"limit is {limit}"
+        )
+    return offset_minutes
 
 
 def _validate_account(account: AccountSnapshot, policy: DemoAccountPolicy) -> None:
@@ -489,6 +586,83 @@ def _validate_request_against_market(
     return price
 
 
+def _verify_position_ownership(
+    positions: Iterable[PositionSnapshot],
+    position: PositionSnapshot,
+    *,
+    expected_magic: int,
+    expected_client_reference: str,
+) -> PositionSnapshot:
+    """Re-prove that one live broker position is the bot's own before touching it.
+
+    Identity is the broker ticket plus every immutable field of the position
+    the caller read, plus the bot's ``magic`` and client reference.  A manual
+    position, or a position that changed between the read and the mutation, is
+    never managed: per the ``idempotency-and-reconciliation`` rule ownership
+    has to be proved exactly, not inferred from shape.
+    """
+
+    matches = [
+        candidate
+        for candidate in positions
+        if candidate.position_id == position.position_id
+    ]
+    if not matches:
+        raise BrokerSafetyError(
+            "open position is no longer present; it must be reconciled, not managed"
+        )
+    if len(matches) != 1:
+        raise BrokerSafetyError("broker returned duplicate positions for one ticket")
+    live = matches[0]
+    if live.magic != expected_magic or live.comment != expected_client_reference:
+        raise BrokerSafetyError("open position is not owned by this bot")
+    if (
+        live.account_id != position.account_id
+        or live.symbol != position.symbol
+        or live.side != position.side
+        or live.volume != position.volume
+        or live.price_open != position.price_open
+    ):
+        raise BrokerSafetyError("open position changed between read and management")
+    return live
+
+
+def _validate_protection_against_market(
+    side: str,
+    stop_loss: Decimal,
+    take_profit: Decimal | None,
+    symbol: SymbolSnapshot,
+    tick: TickSnapshot,
+) -> None:
+    """Reject protective prices the broker would refuse or that remove cover."""
+
+    if stop_loss <= 0:
+        raise BrokerSafetyError("a positive numeric stop_loss is required")
+    if take_profit is not None and take_profit <= 0:
+        raise BrokerSafetyError("take_profit must be positive")
+    if not symbol.stop_loss_allowed:
+        raise SymbolNotAvailable("symbol does not allow broker-side Stop Loss")
+    if take_profit is not None and not symbol.take_profit_allowed:
+        raise SymbolNotAvailable("symbol does not allow broker-side Take Profit")
+    close_quote = tick.bid if side == "BUY" else tick.ask
+    if side == "BUY":
+        if not stop_loss < close_quote:
+            raise BrokerSafetyError("BUY stop_loss must stay below the current Bid")
+        if take_profit is not None and not close_quote < take_profit:
+            raise BrokerSafetyError("BUY take_profit must stay above the current Bid")
+    else:
+        if not close_quote < stop_loss:
+            raise BrokerSafetyError("SELL stop_loss must stay above the current Ask")
+        if take_profit is not None and not take_profit < close_quote:
+            raise BrokerSafetyError("SELL take_profit must stay below the current Ask")
+    minimum_distance = symbol.point * Decimal(symbol.stops_level_points)
+    if minimum_distance > 0:
+        if abs(close_quote - stop_loss) < minimum_distance:
+            raise BrokerSafetyError("stop_loss violates broker stops level")
+        if take_profit is not None and abs(close_quote - take_profit) < minimum_distance:
+            raise BrokerSafetyError("take_profit violates broker stops level")
+
+
 def _read_back_from_positions(
     positions: Iterable[PositionSnapshot],
     request: MarketOrderRequest,
@@ -556,6 +730,9 @@ class FakeBroker:
         self._clock = clock
         self.checked_requests: list[MarketOrderRequest] = []
         self.sent_requests: list[MarketOrderRequest] = []
+        self.protection_changes: list[tuple[str, Decimal, Decimal | None]] = []
+        self.closed_positions: list[str] = []
+        self._close_results: Deque[BrokerResult] = deque()
         self._ticket_sequence = 1000
 
     def queue_check_result(self, result: BrokerResult) -> None:
@@ -563,6 +740,9 @@ class FakeBroker:
 
     def queue_send_result(self, result: BrokerResult) -> None:
         self._send_results.append(result)
+
+    def queue_close_result(self, result: BrokerResult) -> None:
+        self._close_results.append(result)
 
     def discover_account(self) -> AccountSnapshot:
         _validate_account(self.account, self.policy)
@@ -609,6 +789,81 @@ class FakeBroker:
         return _read_back_from_positions(
             self.list_open_positions(request.symbol), request, result
         )
+
+    def modify_position_protection(
+        self,
+        position: PositionSnapshot,
+        *,
+        stop_loss: Decimal,
+        take_profit: Decimal | None,
+        expected_magic: int,
+        expected_client_reference: str,
+    ) -> PositionSnapshot:
+        self.discover_account()
+        symbol = self.discover_symbol(position.symbol)
+        tick = self.get_tick(position.symbol)
+        live = _verify_position_ownership(
+            self.list_open_positions(position.symbol),
+            position,
+            expected_magic=expected_magic,
+            expected_client_reference=expected_client_reference,
+        )
+        new_stop = _decimal(stop_loss, "stop_loss")
+        new_target = None if take_profit is None else _decimal(take_profit, "take_profit")
+        _validate_protection_against_market(live.side, new_stop, new_target, symbol, tick)
+        updated = replace(live, stop_loss=new_stop, take_profit=new_target)
+        self.positions = [
+            updated if item.position_id == live.position_id else item
+            for item in self.positions
+        ]
+        self.protection_changes.append((live.position_id, new_stop, new_target))
+        return updated
+
+    def close_position(
+        self,
+        position: PositionSnapshot,
+        *,
+        expected_magic: int,
+        expected_client_reference: str,
+        deviation_points: int = 0,
+    ) -> BrokerResult:
+        if deviation_points < 0:
+            raise ValueError("deviation_points must be non-negative")
+        self.discover_account()
+        self.discover_symbol(position.symbol)
+        tick = self.get_tick(position.symbol)
+        live = _verify_position_ownership(
+            self.list_open_positions(position.symbol),
+            position,
+            expected_magic=expected_magic,
+            expected_client_reference=expected_client_reference,
+        )
+        price = tick.bid if live.side == "BUY" else tick.ask
+        if self._close_results:
+            scripted = self._close_results.popleft()
+            if scripted.outcome is BrokerOutcome.ACCEPTED:
+                self._remove_position(live.position_id)
+            return replace(
+                scripted,
+                price=scripted.price if scripted.price is not None else price,
+                volume=scripted.volume if scripted.volume is not None else live.volume,
+            )
+        self._remove_position(live.position_id)
+        return BrokerResult(
+            outcome=BrokerOutcome.ACCEPTED,
+            stage="close_position",
+            retcode=10009,
+            comment="fake position closed",
+            price=price,
+            volume=live.volume,
+            raw_fields={"position_id": live.position_id},
+        )
+
+    def _remove_position(self, position_id: str) -> None:
+        self.positions = [
+            item for item in self.positions if item.position_id != position_id
+        ]
+        self.closed_positions.append(position_id)
 
     def _preflight(self, request: MarketOrderRequest) -> Decimal:
         account = self.discover_account()
@@ -704,12 +959,58 @@ class MetaTrader5Broker:
         terminal_path: str | None = None,
         mt5_module: Any | None = None,
         clock: Callable[[], datetime] = _utc_now,
+        server_utc_offset_minutes: int | None = 0,
     ) -> None:
         self.policy = policy
         self.terminal_path = terminal_path
         self._mt5 = mt5_module
         self._clock = clock
         self._initialized = False
+        if server_utc_offset_minutes is None:
+            self._offset_minutes: int | None = None
+            self._offset_source = "unresolved"
+        else:
+            offset = int(server_utc_offset_minutes)
+            if abs(offset) > MAX_SERVER_OFFSET_MINUTES:
+                raise ValueError("server_utc_offset_minutes is not a plausible offset")
+            self._offset_minutes = offset
+            self._offset_source = "configured"
+
+    @property
+    def server_utc_offset_minutes(self) -> int | None:
+        """Resolved broker-server offset from UTC, or ``None`` until measured."""
+
+        return self._offset_minutes
+
+    @property
+    def server_offset_source(self) -> str:
+        return self._offset_source
+
+    def resolve_server_utc_offset(self, exact_symbol: str) -> int:
+        """Measure and cache the server clock offset from one fresh quote.
+
+        Measured once per session on purpose.  A later clock drift or a frozen
+        feed then shows up as a growing tick age and fails the freshness gate,
+        which is what that gate is for; re-measuring on every call would keep
+        re-centring the window on a stalled feed and hide exactly that.
+        """
+
+        if self._offset_minutes is not None:
+            return self._offset_minutes
+        self.get_tick(exact_symbol)
+        assert self._offset_minutes is not None
+        return self._offset_minutes
+
+    def _to_utc(self, server_epoch_seconds: float) -> datetime:
+        """Convert an MT5 server-clock timestamp to true UTC.
+
+        Before the offset is resolved this is the raw server reading.  Only
+        :meth:`get_tick` feeds a time-based gate, and it always resolves the
+        offset first; position and order timestamps are evidence fields.
+        """
+
+        offset_seconds = (self._offset_minutes or 0) * 60
+        return datetime.fromtimestamp(server_epoch_seconds - offset_seconds, tz=UTC)
 
     def __enter__(self) -> MetaTrader5Broker:
         self.initialize()
@@ -824,11 +1125,11 @@ class MetaTrader5Broker:
                 raise SymbolNotAvailable("symbol is still unavailable after exact selection")
         trade_mode = self._trade_mode_text(int(getattr(info, "trade_mode", -1)))
         order_mode = int(getattr(info, "order_mode", 0))
-        market_flag = getattr(mt5, "SYMBOL_ORDER_MARKET", None)
-        sl_flag = getattr(mt5, "SYMBOL_ORDER_SL", None)
-        tp_flag = getattr(mt5, "SYMBOL_ORDER_TP", None)
-        if market_flag is None or sl_flag is None or tp_flag is None:
-            raise BrokerUnavailableError("MT5 symbol order-mode constants are unavailable")
+        market_flag = getattr(mt5, "SYMBOL_ORDER_MARKET", SYMBOL_ORDER_MARKET_FLAG)
+        sl_flag = getattr(mt5, "SYMBOL_ORDER_SL", SYMBOL_ORDER_SL_FLAG)
+        tp_flag = getattr(mt5, "SYMBOL_ORDER_TP", SYMBOL_ORDER_TP_FLAG)
+        if not order_mode:
+            raise BrokerUnavailableError("MT5 symbol order-mode bitmask is unavailable")
         return SymbolSnapshot(
             symbol=exact_symbol,
             visible=True,
@@ -871,12 +1172,20 @@ class MetaTrader5Broker:
             )
         time_msc = int(getattr(tick, "time_msc", 0) or 0)
         if time_msc:
-            tick_time = datetime.fromtimestamp(time_msc / 1000, tz=UTC)
+            server_epoch = time_msc / 1000
         else:
             seconds = int(getattr(tick, "time", 0) or 0)
             if not seconds:
                 raise StaleTickError("MT5 tick has no timestamp")
-            tick_time = datetime.fromtimestamp(seconds, tz=UTC)
+            server_epoch = float(seconds)
+        if self._offset_minutes is None:
+            self._offset_minutes = detect_server_utc_offset_minutes(
+                server_epoch,
+                self._clock(),
+                max_residual_seconds=self.policy.max_tick_age_seconds,
+            )
+            self._offset_source = "detected"
+        tick_time = self._to_utc(server_epoch)
         return TickSnapshot(
             symbol=exact_symbol,
             bid=_decimal_from_broker(getattr(tick, "bid", 0), "bid"),
@@ -913,12 +1222,12 @@ class MetaTrader5Broker:
                 raise BrokerUnavailableError("MT5 returned an unknown open-position side")
             time_msc = int(getattr(raw, "time_msc", 0) or 0)
             if time_msc:
-                opened_at = datetime.fromtimestamp(time_msc / 1000, tz=UTC)
+                opened_at = self._to_utc(time_msc / 1000)
             else:
                 seconds = int(getattr(raw, "time", 0) or 0)
                 if not seconds:
                     raise BrokerUnavailableError("MT5 position has no open timestamp")
-                opened_at = datetime.fromtimestamp(seconds, tz=UTC)
+                opened_at = self._to_utc(float(seconds))
             snapshots.append(
                 PositionSnapshot(
                     account_id=account.login,
@@ -999,12 +1308,12 @@ class MetaTrader5Broker:
                     raise ValueError("unknown pending-order side")
                 time_msc = int(getattr(raw, "time_setup_msc", 0) or 0)
                 if time_msc:
-                    created_at = datetime.fromtimestamp(time_msc / 1000, tz=UTC)
+                    created_at = self._to_utc(time_msc / 1000)
                 else:
                     seconds = int(getattr(raw, "time_setup", 0) or 0)
                     if not seconds:
                         raise ValueError("missing pending-order timestamp")
-                    created_at = datetime.fromtimestamp(seconds, tz=UTC)
+                    created_at = self._to_utc(float(seconds))
                 volume_value = getattr(raw, "volume_current", None)
                 if volume_value is None:
                     volume_value = getattr(raw, "volume_initial", None)
@@ -1212,6 +1521,182 @@ class MetaTrader5Broker:
             fallback_price=price,
         )
 
+    def modify_position_protection(
+        self,
+        position: PositionSnapshot,
+        *,
+        stop_loss: Decimal,
+        take_profit: Decimal | None,
+        expected_magic: int,
+        expected_client_reference: str,
+    ) -> PositionSnapshot:
+        """Replace the broker-side protection of one owned position.
+
+        Only ever relocates protection the bot already placed; it cannot change
+        volume or open anything.  The new Stop Loss must still be a valid
+        protective price at the current quote, so this can never be used to
+        remove cover.  Success requires exact read-back.
+        """
+
+        mt5 = self._ensure_initialized()
+        account = self.discover_account()
+        if account.login != position.account_id:
+            raise AccountNotAllowlisted(
+                "position account does not match the active Demo login"
+            )
+        symbol = self.discover_symbol(position.symbol)
+        tick = self.get_tick(position.symbol)
+        live = _verify_position_ownership(
+            self.list_open_positions(position.symbol),
+            position,
+            expected_magic=expected_magic,
+            expected_client_reference=expected_client_reference,
+        )
+        new_stop = _decimal(stop_loss, "stop_loss")
+        new_target = None if take_profit is None else _decimal(take_profit, "take_profit")
+        _validate_protection_against_market(live.side, new_stop, new_target, symbol, tick)
+        payload: dict[str, Any] = {
+            "action": getattr(mt5, "TRADE_ACTION_SLTP"),
+            "symbol": live.symbol,
+            "position": int(live.position_id),
+            "sl": float(new_stop),
+            "tp": 0.0 if new_target is None else float(new_target),
+        }
+        try:
+            mt5.order_send(dict(payload))
+        except Exception:
+            # A protection change cannot create exposure, so an ambiguous send
+            # is resolved by read-back below rather than by a retry.
+            pass
+        applied = _verify_position_ownership(
+            self.list_open_positions(live.symbol),
+            live,
+            expected_magic=expected_magic,
+            expected_client_reference=expected_client_reference,
+        )
+        tolerance = symbol.point / Decimal(2)
+        if applied.stop_loss is None or abs(applied.stop_loss - new_stop) > tolerance:
+            raise BrokerSafetyError(
+                "broker did not apply the requested stop_loss; position is unchanged"
+            )
+        if new_target is not None and (
+            applied.take_profit is None
+            or abs(applied.take_profit - new_target) > tolerance
+        ):
+            raise BrokerSafetyError("broker did not preserve the requested take_profit")
+        return applied
+
+    def close_position(
+        self,
+        position: PositionSnapshot,
+        *,
+        expected_magic: int,
+        expected_client_reference: str,
+        deviation_points: int = 0,
+    ) -> BrokerResult:
+        """Close one owned position at market with a single, unrepeated send.
+
+        The result is only ``ACCEPTED`` when the ticket is gone from broker
+        state afterwards.  A position still open after an accepted-looking
+        result is ``RECONCILE_REQUIRED``, never a second attempt.
+        """
+
+        if deviation_points < 0:
+            raise ValueError("deviation_points must be non-negative")
+        mt5 = self._ensure_initialized()
+        account = self.discover_account()
+        if account.login != position.account_id:
+            raise AccountNotAllowlisted(
+                "position account does not match the active Demo login"
+            )
+        symbol = self.discover_symbol(position.symbol)
+        tick = self.get_tick(position.symbol)
+        live = _verify_position_ownership(
+            self.list_open_positions(position.symbol),
+            position,
+            expected_magic=expected_magic,
+            expected_client_reference=expected_client_reference,
+        )
+        closing_side = "SELL" if live.side == "BUY" else "BUY"
+        price = tick.bid if live.side == "BUY" else tick.ask
+        payload: dict[str, Any] = {
+            "action": getattr(mt5, "TRADE_ACTION_DEAL"),
+            "symbol": live.symbol,
+            "position": int(live.position_id),
+            "volume": float(live.volume),
+            "type": (
+                getattr(mt5, "ORDER_TYPE_SELL")
+                if closing_side == "SELL"
+                else getattr(mt5, "ORDER_TYPE_BUY")
+            ),
+            "price": float(price),
+            "deviation": int(deviation_points),
+            "magic": expected_magic,
+            "comment": expected_client_reference,
+            "type_time": getattr(mt5, "ORDER_TIME_GTC"),
+            "type_filling": self._filling_type(symbol),
+        }
+        send_error: str | None = None
+        try:
+            result = mt5.order_send(dict(payload))
+        except Exception as exc:
+            result = None
+            send_error = f"close order_send raised {type(exc).__name__}"
+        still_open = [
+            candidate
+            for candidate in self.list_open_positions(live.symbol)
+            if candidate.position_id == live.position_id
+        ]
+        if result is None:
+            return BrokerResult(
+                outcome=(
+                    BrokerOutcome.ACCEPTED
+                    if not still_open
+                    else BrokerOutcome.RECONCILE_REQUIRED
+                ),
+                stage="close_position",
+                retcode=None,
+                comment=send_error or "close order_send returned no result",
+                price=price,
+                volume=live.volume,
+                raw_fields={"position_id": live.position_id},
+            )
+        retcode = int(getattr(result, "retcode", -1))
+        outcome = self._classify_send_retcode(retcode)
+        if still_open:
+            # Anything short of the ticket disappearing leaves ownership open;
+            # a clean rejection that left it open is simply a rejection.
+            outcome = (
+                BrokerOutcome.REJECTED
+                if outcome is BrokerOutcome.REJECTED
+                else BrokerOutcome.RECONCILE_REQUIRED
+            )
+        elif outcome is not BrokerOutcome.REJECTED:
+            outcome = BrokerOutcome.ACCEPTED
+        return BrokerResult(
+            outcome=outcome,
+            stage="close_position",
+            retcode=retcode,
+            comment=str(getattr(result, "comment", "")),
+            price=(
+                price
+                if getattr(result, "price", None) in (None, 0, 0.0)
+                else _decimal_from_broker(getattr(result, "price"), "close price")
+            ),
+            volume=live.volume,
+            order_id=(
+                None
+                if getattr(result, "order", None) in (None, 0)
+                else str(getattr(result, "order"))
+            ),
+            deal_id=(
+                None
+                if getattr(result, "deal", None) in (None, 0)
+                else str(getattr(result, "deal"))
+            ),
+            raw_fields={"position_id": live.position_id},
+        )
+
     def _classify_send_retcode(self, retcode: int) -> BrokerOutcome:
         mt5 = self._ensure_initialized()
         accepted = {
@@ -1301,6 +1786,8 @@ class MetaTrader5Broker:
 
 
 __all__ = [
+    "MAX_SERVER_OFFSET_MINUTES",
+    "SERVER_OFFSET_GRANULARITY_MINUTES",
     "AccountNotAllowlisted",
     "AccountSnapshot",
     "BrokerAdapter",
@@ -1315,9 +1802,11 @@ __all__ = [
     "MarketOrderRequest",
     "MetaTrader5Broker",
     "PendingOrderSnapshot",
+    "PositionManager",
     "PositionSnapshot",
     "StaleTickError",
     "SymbolNotAvailable",
     "SymbolSnapshot",
     "TickSnapshot",
+    "detect_server_utc_offset_minutes",
 ]

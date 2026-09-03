@@ -1,10 +1,27 @@
 {
+  "autotrade": {
+    "broker_symbol": "XAUUSD",
+    "close_on_opposite_crossover": true,
+    "cooldown_bars": 3,
+    "enabled": false,
+    "higher_timeframe": "auto",
+    "max_open_positions": 1,
+    "max_spread_points": 60,
+    "max_trades_per_day": 10,
+    "move_stop_to_breakeven_after_tp1": true,
+    "poll_seconds": 5.0,
+    "require_higher_timeframe_agreement": true,
+    "take_profit_index": 2,
+    "timeframe": "M1",
+    "trade_enabled": false
+  },
   "broker": {
     "adapter": "xm_webtrader",
     "allowed_demo_accounts_env": "TGXM_ALLOWED_DEMO_ACCOUNTS",
     "allowed_servers_env": "TGXM_ALLOWED_DEMO_SERVERS",
     "max_tick_age_seconds": 5,
     "require_demo": true,
+    "server_utc_offset_minutes": null,
     "terminal_path": "",
     "webtrader_allowed_origins": [
       "https://mt5.xm.com",
@@ -100,7 +117,7 @@
       "two_level_semantics": "zone_single_market"
     }
   },
-  "config_version": 2,
+  "config_version": 3,
   "execution": {
     "deviation_points": 20,
     "management_action_policy": "notify_only",

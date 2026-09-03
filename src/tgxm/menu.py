@@ -34,6 +34,16 @@ _CHOICE_HINTS: dict[str, tuple[str, ...]] = {
     "risk.opposite_side_conflict_policy": ("block", "allow_hedge"),
     "execution.management_action_policy": ("notify_only",),
     "indicator.timeframe": ("M1", "M5", "M15", "M30", "H1", "H4", "D1"),
+    "autotrade.timeframe": ("M1", "M5", "M15", "M30", "H1", "H4", "D1"),
+    "autotrade.higher_timeframe": (
+        "auto",
+        "M5",
+        "M15",
+        "M30",
+        "H1",
+        "H4",
+        "D1",
+    ),
 }
 _ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
