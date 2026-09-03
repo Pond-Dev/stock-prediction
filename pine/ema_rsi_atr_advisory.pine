@@ -1,9 +1,6 @@
 //@version=6
 indicator("EMA/RSI/ATR Advisory (view only)", shorttitle = "EMA-RSI-ATR Advisory",
-     overlay = true, max_labels_count = 1, max_lines_count = 3, max_boxes_count = 20)
-
-TABLE_FULL      = "Everything"
-TABLE_ZONES     = "Zones only (scalping)"
+     overlay = true, max_labels_count = 1, max_lines_count = 3)
 
 HTF_GROUP       = "Higher-timeframe filter"
 HTF_MODE_LADDER = "Preset ladder (1m→15m, 15m→1H, 30m→4H …)"
@@ -24,11 +21,6 @@ moveToBreakeven = input.bool(true, "Move Stop Loss to breakeven after TP1")
 clearOnClose  = input.bool(true, "Clear marker immediately when a trade closes")
 showFiltered  = input.bool(false, "Show raw crossovers a filter blocked (debug)")
 showTable     = input.bool(true, "Show status table")
-tableMode     = input.string(TABLE_FULL, "Status table shows", options = [TABLE_FULL, TABLE_ZONES],
-     tooltip = "Everything: every status row.\nZones only: drops the rows you do not re-read every " +
-     "minute and lists the drawn boxes instead — highest price first, with a ► ราคา row marking where " +
-     "price sits in that ladder, the distance to each box in ATR, and how much room is left above and " +
-     "below.  Meant for scalping a fast chart, where the boxes are the thing you are reading.")
 
 useHtfFilter  = input.bool(true, "Require higher-timeframe trend agreement", group = HTF_GROUP)
 htfMode       = input.string(HTF_MODE_LADDER, "Higher timeframe comes from",
@@ -41,49 +33,6 @@ htfMode       = input.string(HTF_MODE_LADDER, "Higher timeframe comes from",
      "status table says why.")
 htfMultiplier = input.int(4, "Multiplier (Multiplier mode / ladder fallback)", minval = 2, maxval = 30, group = HTF_GROUP)
 htfFixed      = input.timeframe("60", "Fixed timeframe (Fixed mode)", group = HTF_GROUP)
-
-ZONE_GROUP = "Supply / demand zones"
-
-useZones         = input.bool(true, "Draw zones from every watched timeframe", group = ZONE_GROUP,
-     tooltip = "Each timeframe in the Multi-timeframe agreement group contributes its two most recent " +
-     "confirmed swing highs and swing lows, and every box is labelled with the timeframe that produced " +
-     "it (15m ต้าน, 3m รับ …).\n\nA level is red (ต้าน) while it sits ABOVE price and blue (รับ) while it " +
-     "sits BELOW: a level price has broken through is not deleted, it flips side and becomes support on " +
-     "the way back down — which is why there is nearly always a box drawn above and below.")
-zonePivotLen     = input.int(5, "Swing length (bars each side)", minval = 2, maxval = 50, group = ZONE_GROUP,
-     tooltip = "A swing is only confirmed this many bars after it printed, on its own timeframe, so a box " +
-     "appears late but is never redrawn retroactively.  A 15m swing therefore needs 5 closed 15m bars.")
-zoneShowCount    = input.int(4, "Show only the nearest (boxes)", minval = 1, maxval = 8, group = ZONE_GROUP,
-     tooltip = "The nearest level above price and the nearest below always get a slot, so the range you " +
-     "are trading in is never half-missing; the rest go to whatever is closest.")
-zoneThickAtr     = input.float(0.25, "Box thickness (x that timeframe's ATR)", minval = 0.05, maxval = 2.0,
-     step = 0.05, group = ZONE_GROUP, tooltip = "Each box is drawn around its level using the ATR of the " +
-     "timeframe it came from, so a 15m box is naturally wider than a 1m one.")
-zoneProximityAtr = input.float(0.5, "\"Near a box\" = within x ATR", minval = 0.0, step = 0.1, group = ZONE_GROUP)
-zoneBlockSignals = input.bool(false, "Block BUY near ต้าน / SELL near รับ", group = ZONE_GROUP,
-     tooltip = "Off (default): boxes are advisory only and the BUY/SELL rule stays identical to tgxm " +
-     "autotrade / tgxm predict.\nOn: a crossover that fires within \"Near a box\" of the opposite box is " +
-     "declined, like the RSI and higher-timeframe filters — the chart then is stricter than the bot.")
-
-MTF_GROUP = "Multi-timeframe agreement"
-
-useMtfPanel = input.bool(true, "Watch several timeframes at once", group = MTF_GROUP,
-     tooltip = "Reads each timeframe below on THIS chart, so you do not have to flip between charts to " +
-     "compare them.  The table's แนวโน้มหลาย TF row shows one ▲/▼ per timeframe.\n\nA timeframe LOWER than " +
-     "the chart cannot be read (request.security only resolves the chart's timeframe or above): it shows " +
-     "as – and is never counted.  Put the chart on the lowest timeframe you want to watch and every slot " +
-     "resolves — on a 1m chart, 1m/3m/5m/15m all work.")
-mtfCount    = input.int(4, "How many timeframes", minval = 1, maxval = 4, group = MTF_GROUP)
-mtfTf1      = input.timeframe("1",  "Timeframe 1", group = MTF_GROUP)
-mtfTf2      = input.timeframe("3",  "Timeframe 2", group = MTF_GROUP)
-mtfTf3      = input.timeframe("5",  "Timeframe 3", group = MTF_GROUP)
-mtfTf4      = input.timeframe("15", "Timeframe 4", group = MTF_GROUP)
-mtfBlock    = input.bool(false, "Block signals unless enough timeframes agree", group = MTF_GROUP,
-     tooltip = "Off (default): the row is advisory only and the BUY/SELL rule stays identical to tgxm " +
-     "autotrade / tgxm predict.\nOn: a crossover is declined unless at least N of the timeframes below " +
-     "already point the same way, like the RSI and higher-timeframe filters.\n\nFails closed: a slot that " +
-     "cannot be read never counts, so requiring 4 while one slot is unreadable blocks every signal.")
-mtfMinAgree = input.int(3, "Minimum agreeing timeframes", minval = 1, maxval = 4, group = MTF_GROUP)
 
 // Pretty label for a timeframe string: "1" → "1m", "60" → "1H"; "1D"/"1W"/"1M" pass through.
 tfLabel(string tf) =>
@@ -140,187 +89,8 @@ htfBearish = htfValid and htfEmaFast < htfEmaSlow
 htfGateUp   = not useHtfFilter or htfBullish
 htfGateDown = not useHtfFilter or htfBearish
 
-// ── Multi-timeframe agreement ────────────────────────────────────────────────
-// One chart, several timeframes: each configured timeframe's own EMA fast/slow
-// relationship is fetched here, so comparing 1m/3m/5m/15m no longer means
-// flipping between four charts and reading four tables by eye.
-//
-// request.security() can only resolve the chart's timeframe or above, so a slot
-// BELOW the chart is requested as the chart timeframe (harmless) and excluded
-// from the counts — exactly how htfValid handles an unusable higher timeframe.
-// Everything one timeframe has to say, in a single request: its EMA pair for
-// the agreement row, plus its two most recent confirmed swing highs / lows and
-// its own ATR for the zone boxes.  ta.pivothigh/pivotlow return a value only on
-// the bar that confirms a swing, so the last two of each are held here, inside
-// that timeframe's own context.
-mtfPack() =>
-    float ph = ta.pivothigh(high, zonePivotLen, zonePivotLen)
-    float pl = ta.pivotlow(low,  zonePivotLen, zonePivotLen)
-    var float h1 = na
-    var float h2 = na
-    var float l1 = na
-    var float l2 = na
-    if not na(ph)
-        h2 := h1
-        h1 := ph
-    if not na(pl)
-        l2 := l1
-        l1 := pl
-    [ta.ema(close, emaFastLen), ta.ema(close, emaSlowLen), h1, h2, l1, l2, ta.atr(atrLen)]
-
-mtfSecs1 = timeframe.in_seconds(mtfTf1)
-mtfSecs2 = timeframe.in_seconds(mtfTf2)
-mtfSecs3 = timeframe.in_seconds(mtfTf3)
-mtfSecs4 = timeframe.in_seconds(mtfTf4)
-
-// One request per timeframe (a single 7-value tuple, not one call per figure):
-// 4 of the 40 request.*() calls a script may make, on top of the 2 the
-// higher-timeframe filter uses.
-[mtfFast1, mtfSlow1, zHiA1, zHiB1, zLoA1, zLoB1, zAtr1] = request.security(syminfo.tickerid, mtfSecs1 >= currentTfSeconds ? mtfTf1 : timeframe.period, mtfPack(), lookahead = barmerge.lookahead_off)
-[mtfFast2, mtfSlow2, zHiA2, zHiB2, zLoA2, zLoB2, zAtr2] = request.security(syminfo.tickerid, mtfSecs2 >= currentTfSeconds ? mtfTf2 : timeframe.period, mtfPack(), lookahead = barmerge.lookahead_off)
-[mtfFast3, mtfSlow3, zHiA3, zHiB3, zLoA3, zLoB3, zAtr3] = request.security(syminfo.tickerid, mtfSecs3 >= currentTfSeconds ? mtfTf3 : timeframe.period, mtfPack(), lookahead = barmerge.lookahead_off)
-[mtfFast4, mtfSlow4, zHiA4, zHiB4, zLoA4, zLoB4, zAtr4] = request.security(syminfo.tickerid, mtfSecs4 >= currentTfSeconds ? mtfTf4 : timeframe.period, mtfPack(), lookahead = barmerge.lookahead_off)
-
-var array<string> mtfTfArr   = array.from(mtfTf1, mtfTf2, mtfTf3, mtfTf4)
-var array<int>    mtfSecsArr = array.from(mtfSecs1, mtfSecs2, mtfSecs3, mtfSecs4)
-mtfFastArr = array.from(mtfFast1, mtfFast2, mtfFast3, mtfFast4)
-mtfSlowArr = array.from(mtfSlow1, mtfSlow2, mtfSlow3, mtfSlow4)
-zoneHiAArr = array.from(zHiA1, zHiA2, zHiA3, zHiA4)
-zoneHiBArr = array.from(zHiB1, zHiB2, zHiB3, zHiB4)
-zoneLoAArr = array.from(zLoA1, zLoA2, zLoA3, zLoA4)
-zoneLoBArr = array.from(zLoB1, zLoB2, zLoB3, zLoB4)
-zoneAtrTf  = array.from(zAtr1, zAtr2, zAtr3, zAtr4)
-
-int mtfUp     = 0
-int mtfDown   = 0
-int mtfUnread = 0
-for i = 0 to mtfCount - 1
-    float f = array.get(mtfFastArr, i)
-    float s = array.get(mtfSlowArr, i)
-    if array.get(mtfSecsArr, i) < currentTfSeconds or na(f) or na(s)
-        mtfUnread += 1
-    else if f > s
-        mtfUp += 1
-    else if f < s
-        mtfDown += 1
-
-// The multi-timeframe gate as the signals see it: always open unless the
-// optional block is on, in which case enough timeframes must already agree.
-mtfGateUp   = not (useMtfPanel and mtfBlock) or mtfUp   >= mtfMinAgree
-mtfGateDown = not (useMtfPanel and mtfBlock) or mtfDown >= mtfMinAgree
-
-// ── Supply / demand zones, one set per watched timeframe ─────────────────────
-// Every watched timeframe contributes its two most recent confirmed swing highs
-// and swing lows, fetched above in that timeframe's own context.  A level is
-// classified by the side of price it sits on RIGHT NOW: above = ต้าน (red),
-// below = รับ (blue).  A swing high price has since broken through is therefore
-// not deleted the way an unmitigated-order-block rule deletes it — it flips to
-// รับ and keeps marking the level, which is why there is nearly always a box
-// drawn on both sides even during a one-way run.
-zoneLvlArr = array.new<float>()
-zoneTfArr  = array.new<string>()
-zoneAtrArr = array.new<float>()
-
-// Two timeframes often mark the same price.  The first one collected wins and
-// timeframes are collected biggest-first, so the weightier label is the one
-// that sticks.
-zoneCollect(float lvl, string tfName, float tfAtr) =>
-    if not na(lvl) and not na(tfAtr) and not na(atrValue)
-        bool dup = false
-        for existing in zoneLvlArr
-            if math.abs(existing - lvl) < atrValue * 0.15
-                dup := true
-                break
-        if not dup
-            array.push(zoneLvlArr, lvl)
-            array.push(zoneTfArr, tfName)
-            array.push(zoneAtrArr, tfAtr)
-
-// With the block off the levels only need to exist for the table on the last
-// bar; with it on the gate reads them on every bar, so they are built on every
-// bar.  Skipping the work on historical bars keeps the script well inside
-// TradingView's execution budget on a 1m chart with 10k+ bars.
-if useZones and (barstate.islast or zoneBlockSignals)
-    for i = mtfCount - 1 to 0
-        if array.get(mtfSecsArr, i) >= currentTfSeconds
-            string nm = tfLabel(array.get(mtfTfArr, i))
-            float  a  = array.get(zoneAtrTf, i)
-            zoneCollect(array.get(zoneHiAArr, i), nm, a)
-            zoneCollect(array.get(zoneLoAArr, i), nm, a)
-            zoneCollect(array.get(zoneHiBArr, i), nm, a)
-            zoneCollect(array.get(zoneLoBArr, i), nm, a)
-
-int    supplyIdx = na
-int    demandIdx = na
-float  supplyLvl = na
-float  demandLvl = na
-string supplyTf  = ""
-string demandTf  = ""
-if array.size(zoneLvlArr) > 0
-    for i = 0 to array.size(zoneLvlArr) - 1
-        float lvl = array.get(zoneLvlArr, i)
-        if lvl >= close
-            if na(supplyLvl) or lvl < supplyLvl
-                supplyLvl := lvl
-                supplyIdx := i
-                supplyTf  := array.get(zoneTfArr, i)
-        else
-            if na(demandLvl) or lvl > demandLvl
-                demandLvl := lvl
-                demandIdx := i
-                demandTf  := array.get(zoneTfArr, i)
-
-// Which boxes actually get drawn: the nearest above and the nearest below are
-// reserved first, so the range price is trading in is never shown with one side
-// missing, then the remaining slots go to whatever else is closest.
-zoneShown = array.new<int>()
-if useZones and array.size(zoneLvlArr) > 0
-    zoneDist = array.new<float>()
-    for lvl in zoneLvlArr
-        array.push(zoneDist, math.abs(lvl - close))
-    zoneOrder = array.sort_indices(zoneDist, order.ascending)
-    if not na(supplyIdx)
-        array.push(zoneShown, supplyIdx)
-    if not na(demandIdx) and array.size(zoneShown) < zoneShowCount
-        array.push(zoneShown, demandIdx)
-    for i = 0 to array.size(zoneOrder) - 1
-        if array.size(zoneShown) >= zoneShowCount
-            break
-        int ix = array.get(zoneOrder, i)
-        if array.indexof(zoneShown, ix) < 0
-            array.push(zoneShown, ix)
-
-// Levels move as price moves, so the boxes are redrawn from scratch on the last
-// bar rather than accumulated bar by bar.
-var array<box> zoneBoxes = array.new<box>()
-if barstate.islast
-    for b in zoneBoxes
-        box.delete(b)
-    array.clear(zoneBoxes)
-    for i in zoneShown
-        float lvl   = array.get(zoneLvlArr, i)
-        float half  = array.get(zoneAtrArr, i) * zoneThickAtr / 2
-        bool  above = lvl >= close
-        array.push(zoneBoxes, box.new(math.max(bar_index - 60, 0), lvl + half, bar_index + 30, lvl - half,
-             border_color = above ? color.new(color.red, 45) : color.new(color.blue, 45),
-             bgcolor      = above ? color.new(color.red, 88) : color.new(color.blue, 88),
-             text         = array.get(zoneTfArr, i) + (above ? " ต้าน" : " รับ"),
-             text_color   = above ? color.new(color.red, 10) : color.new(color.blue, 10),
-             text_size    = size.tiny, text_halign = text.align_right, text_valign = text.align_center))
-
-// Distance from price to the nearest level on each side, in ATR.
-supplyGapAtr = na(supplyLvl) ? na : math.max(supplyLvl - close, 0) / atrValue
-demandGapAtr = na(demandLvl) ? na : math.max(close - demandLvl, 0) / atrValue
-nearSupply   = useZones and not na(supplyGapAtr) and supplyGapAtr <= zoneProximityAtr
-nearDemand   = useZones and not na(demandGapAtr) and demandGapAtr <= zoneProximityAtr
-
-// The zone gate as the signals see it: always open unless the optional block
-// is on, in which case a BUY into supply / SELL into demand is declined.
-zoneGateUp   = not zoneBlockSignals or not nearSupply
-zoneGateDown = not zoneBlockSignals or not nearDemand
-
-buySignal  = crossedUp   and (not useRsiFilter or bullishRsiOk) and htfGateUp   and zoneGateUp   and mtfGateUp
-sellSignal = crossedDown and (not useRsiFilter or bearishRsiOk) and htfGateDown and zoneGateDown and mtfGateDown
+buySignal  = crossedUp   and (not useRsiFilter or bullishRsiOk) and htfGateUp
+sellSignal = crossedDown and (not useRsiFilter or bearishRsiOk) and htfGateDown
 
 plotshape(showFiltered and crossedUp and not buySignal, title = "Crossed up, filtered out",
      style = shape.triangleup, location = location.belowbar, color = color.new(color.gray, 40), size = size.tiny)
@@ -404,7 +174,7 @@ else if status == "OPEN" or status == "TP1_HIT"
             tp2Line     := na
         else
             status := "STOPPED"
-            label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — โดนตัดขาดทุน")
+            label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — STOPPED")
             label.set_color(adviceLabel, color.new(color.gray, 0))
     else if hitTp2
         tp2HitEvent := true
@@ -426,7 +196,7 @@ else if status == "OPEN" or status == "TP1_HIT"
             tp2Line     := na
         else
             status := "TARGET_HIT"
-            label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — ถึงเป้าหมาย")
+            label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — TARGET HIT")
             label.set_color(adviceLabel, color.new(color.teal, 0))
     else if hitTp1
         tp1Hit := true
@@ -436,7 +206,7 @@ else if status == "OPEN" or status == "TP1_HIT"
             managedSL := entryPrice
             line.set_y1(slLine, managedSL)
             line.set_y2(slLine, managedSL)
-        label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — ถึงเป้า 1")
+        label.set_text(adviceLabel, (isBuy ? "BUY" : "SELL") + " — TP1 HIT")
         label.set_color(adviceLabel, color.new(isBuy ? color.green : color.red, 0))
     else if reversed
         status := "NONE"
@@ -466,201 +236,47 @@ alertcondition(tp1HitEvent, title = "Advisory TP1 hit",      message = "TP1 hit 
 alertcondition(tp2HitEvent, title = "Advisory target hit",   message = "Target hit on {{ticker}} @ {{close}}")
 alertcondition(slHitEvent,  title = "Advisory stopped out",  message = "Stopped out on {{ticker}} @ {{close}}")
 
-var table statusTable = table.new(position.top_right, 2, 15, border_width = 1, bgcolor = color.new(color.black, 70))
+var table statusTable = table.new(position.top_right, 2, 13, border_width = 1, bgcolor = color.new(color.black, 70))
 if showTable and barstate.islast
-    string chartName = tfLabel(timeframe.period)
-    string htfName   = tfLabel(htfRequested)
-    bool   warming   = na(emaSlow)
-    bool   htfBroken = useHtfFilter and not htfValid
-    bool   inTrade   = status == "OPEN" or status == "TP1_HIT"
-    string sideName  = direction == 1 ? "BUY (ซื้อ)" : "SELL (ขาย)"
-
-    // Spell out what the NEXT signal is still waiting for, so an empty chart is
-    // never a mystery.  The EMAs are already crossed, so only the opposite cross
-    // can fire next: fast below slow → the next event is a cross up → BUY.
-    bool   nextIsBuy = emaFast < emaSlow
-    bool   rsiReady  = nextIsBuy ? bullishRsiOk : bearishRsiOk
-    bool   htfReady  = nextIsBuy ? htfBullish : htfBearish
-    // A box in the way of the next signal / the trade being held is worth a
-    // heads-up either way; with the block on it is a hard ✗ like the others.
-    bool   zoneWarnWait  = useZones and not inTrade and (nextIsBuy ? nearSupply : nearDemand)
-    bool   zoneWarnTrade = useZones and inTrade and (direction == 1 ? nearSupply : nearDemand)
-    string zoneTradeNote = zoneWarnTrade ? " · ใกล้" + (direction == 1 ? "แนวต้าน" : "แนวรับ") + " ระวังเด้งกลับ" : ""
-    string waitText  = "รอ " + (nextIsBuy ? "BUY" : "SELL") + " · EMA ต้องตัด" + (nextIsBuy ? "ขึ้น" : "ลง") + " ✗" +
-         (useRsiFilter ? (rsiReady ? " · RSI ✓" : " · RSI ✗") : "") +
-         (useHtfFilter ? (htfReady ? " · " + htfName + " ✓" : " · " + htfName + " ✗") : "") +
-         (useMtfPanel and mtfBlock ?
-              ((nextIsBuy ? mtfUp : mtfDown) >= mtfMinAgree ? " · หลาย TF ✓" : " · หลาย TF ✗") : "") +
-         (zoneWarnWait ? " · " + (nextIsBuy ? "ติดแนวต้าน" : "ติดแนวรับ") + (zoneBlockSignals ? " ✗" : " ⚠") : "")
-
-    string verdictText = warming ? "กำลังโหลดข้อมูล..." :
-         htfBroken ? "ตั้งค่าผิด — ไม่มีสัญญาณแน่นอน" :
-         status == "STOPPED"    ? "ไม้ที่แล้ว: โดนตัดขาดทุน" :
-         status == "TARGET_HIT" ? "ไม้ที่แล้ว: ถึงเป้าหมายแล้ว" :
-         not inTrade ? "รอจังหวะ — ยังไม่มีไม้" :
-         (caution ? "ถือ " + sideName + " อยู่ — เริ่มอ่อนแรง" : "ถือ " + sideName + " อยู่") +
-         (status == "TP1_HIT" ? " · ถึงเป้า 1 แล้ว" : "")
-    color verdictColor = warming ? color.gray : htfBroken ? color.orange :
-         status == "STOPPED" ? color.gray : status == "TARGET_HIT" ? color.teal :
-         not inTrade ? color.white : caution ? color.orange :
-         direction == 1 ? color.lime : color.red
-
-    string actionText = warming ? "ซูมออกให้โหลดครบ " + str.tostring(emaSlowLen) + " แท่งก่อน" :
-         htfBroken ? "เลือก TF ใหญ่ให้สูงกว่า " + chartName + " หรือปิดตัวกรอง" :
-         (status == "STOPPED" or status == "TARGET_HIT") ? "รอสัญญาณใหม่" :
-         not inTrade ? waitText :
-         caution ? "ระวัง — ราคาปิดผิดฝั่ง EMA เร็วแล้ว" :
-         status == "TP1_HIT" ? "ถือต่อ ลุ้นเป้า 2 · SL ปลอดภัยแล้ว" + zoneTradeNote :
-         "ถือต่อ · ออกเมื่อถึงเป้า 1 หรือหลุด SL" + zoneTradeNote
-    color actionColor = (warming or htfBroken or caution or zoneWarnTrade) ? color.orange : color.white
-
-    string trendText = warming ? "กำลังคำนวณ..." :
-         emaFast > emaSlow ? "ขาขึ้น (EMA เร็วอยู่บน)" : "ขาลง (EMA เร็วอยู่ล่าง)"
-    color trendColor = warming ? color.gray : emaFast > emaSlow ? color.lime : color.red
-    string htfText   = not htfValid ? "ใช้ไม่ได้ — " + htfName + " ไม่สูงกว่าชาร์ต" :
-         na(htfEmaSlow) ? "กำลังคำนวณ... (" + htfName + ")" :
-         htfBullish ? "ขาขึ้น (" + htfName + ")" : "ขาลง (" + htfName + ")"
-    color htfColor   = not htfValid ? color.orange : na(htfEmaSlow) ? color.gray :
-         htfBullish ? color.lime : color.red
-
-    string entryText = na(entryPrice) ? "-" : str.tostring(entryPrice, format.mintick)
-    string slText    = na(managedSL) ? "-" : str.tostring(managedSL, format.mintick) +
-         (tp1Hit and moveToBreakeven ? " (เท่าทุนแล้ว)" : "")
-    string tp1Text   = na(takeProfit1) ? "-" : str.tostring(takeProfit1, format.mintick) +
-         (tp1Hit ? " (ถึงแล้ว)" : "")
-    string tp2Text   = na(takeProfit2) ? "-" : str.tostring(takeProfit2, format.mintick)
-
-    string rsiText = str.tostring(rsiValue, "#.##") + " · " +
-         (rsiValue >= rsiOverbought ? "ซื้อมากเกินไป" : rsiValue <= rsiOversold ? "ขายมากเกินไป" :
-         rsiValue > 50 ? "หนุนฝั่งซื้อ" : "หนุนฝั่งขาย")
-    string atrText  = str.tostring(atrValue, format.mintick) + " · SL ห่าง ~" +
-         str.tostring(atrValue * atrSlMult, format.mintick)
-    string barsText = str.tostring(bar_index + 1) + " แท่ง" +
-         (warming ? " (ยังไม่พอ ต้อง " + str.tostring(emaSlowLen) + ")" : "")
-
-    string htfModeText   = htfMode == HTF_MODE_LADDER ? "อัตโนมัติ" :
-         htfMode == HTF_MODE_MULT ? "x" + str.tostring(htfMultiplier) : "กำหนดเอง"
-    string htfSourceText = chartName + " → " + htfName + " (" + htfModeText + ")" +
-         (not useHtfFilter ? " · ปิดตัวกรองอยู่" : not htfValid ? " · บล็อกทุกสัญญาณ" : "")
-    color htfSourceColor = not useHtfFilter ? color.gray : not htfValid ? color.orange : color.white
-
-    string supplyText = na(supplyLvl) ? "ต้าน -" :
-         "ต้าน " + supplyTf + " " + str.tostring(supplyLvl, format.mintick) +
-         " (ห่าง " + str.tostring(supplyGapAtr, "#.#") + " ATR)"
-    string demandText = na(demandLvl) ? "รับ -" :
-         "รับ " + demandTf + " " + str.tostring(demandLvl, format.mintick) +
-         " (ห่าง " + str.tostring(demandGapAtr, "#.#") + " ATR)"
-    string rangeText  = na(supplyLvl) or na(demandLvl) ? "" :
-         " · กรอบกว้าง " + str.tostring((supplyLvl - demandLvl) / atrValue, "#.#") + " ATR"
-    string zoneText   = not useZones ? "ปิดอยู่" : supplyText + " · " + demandText + rangeText
-    color  zoneColor  = not useZones ? color.gray : (nearSupply or nearDemand) ? color.orange : color.white
-
-    // One ▲/▼ per watched timeframe, so the whole comparison fits in one row
-    // instead of one chart per timeframe.
-    string mtfMarks = ""
-    for i = 0 to mtfCount - 1
-        int   secs = array.get(mtfSecsArr, i)
-        float f    = array.get(mtfFastArr, i)
-        float s    = array.get(mtfSlowArr, i)
-        string mark = secs < currentTfSeconds ? "–" : na(f) or na(s) ? "…" : f > s ? "▲" : "▼"
-        mtfMarks := mtfMarks + (i > 0 ? "  " : "") + tfLabel(array.get(mtfTfArr, i)) + mark
-    int mtfRead   = mtfUp + mtfDown
-    string mtfText = not useMtfPanel ? "ปิดอยู่" :
-         mtfMarks + " · " + str.tostring(mtfUp) + "▲/" + str.tostring(mtfDown) + "▼" +
-         (mtfUnread > 0 ? " · – อ่านไม่ได้ (ต่ำกว่าชาร์ต)" : "") +
-         (mtfBlock ? " · ต้องตรงกัน " + str.tostring(mtfMinAgree) +
-              (mtfMinAgree > mtfCount - mtfUnread ? " — บล็อกทุกสัญญาณ" : "") : "")
-    color mtfColor = not useMtfPanel ? color.gray :
-         mtfRead == 0 ? color.orange :
-         mtfUp == mtfRead and mtfUnread == 0 ? color.lime :
-         mtfDown == mtfRead and mtfUnread == 0 ? color.red : color.orange
-
-    // Wipe first: the two layouts fill a different number of rows, so cells the
-    // other layout wrote must not survive a switch.
-    table.clear(statusTable, 0, 0, 1, 14)
-
-    if tableMode == TABLE_ZONES
-        // The drawn boxes as a price ladder, highest first, with a marker row
-        // where price sits between them — the same thing the chart shows, in
-        // numbers you can act on without measuring by eye.
-        zoneLadder = array.new<int>()
-        if array.size(zoneShown) > 0
-            zoneShownLvl = array.new<float>()
-            for i in zoneShown
-                array.push(zoneShownLvl, array.get(zoneLvlArr, i))
-            zoneDesc = array.sort_indices(zoneShownLvl, order.descending)
-            for k = 0 to array.size(zoneDesc) - 1
-                array.push(zoneLadder, array.get(zoneShown, array.get(zoneDesc, k)))
-
-        bool   atSupply = not na(supplyGapAtr) and supplyGapAtr <= 0.3
-        bool   atDemand = not na(demandGapAtr) and demandGapAtr <= 0.3
-        string roomText = (na(supplyLvl) ? "บนโล่ง" : "บน " + str.tostring(supplyGapAtr, "#.#") + " ATR") +
-             " · " + (na(demandLvl) ? "ล่างโล่ง" : "ล่าง " + str.tostring(demandGapAtr, "#.#") + " ATR") +
-             (na(supplyLvl) and na(demandLvl) ? "" :
-              na(supplyLvl) ? " → อยู่เหนือทุกกล่อง ไม่มีเป้าบน" :
-              na(demandLvl) ? " → อยู่ใต้ทุกกล่อง ไม่มีตัวรับ" :
-              atSupply and atDemand ? " → บีบระหว่างสองกล่อง" :
-              atSupply ? " → ชนต้าน ซื้อเสี่ยง" :
-              atDemand ? " → ชนรับ ขายเสี่ยง" : " → กลางกรอบ")
-        color  roomColor = not useZones ? color.gray : (atSupply or atDemand) ? color.orange : color.white
-
-        table.cell(statusTable, 0, 0, "ตอนนี้", text_color = color.white, bgcolor = color.new(color.gray, 40))
-        table.cell(statusTable, 1, 0, verdictText, text_color = verdictColor, bgcolor = color.new(color.gray, 40))
-        table.cell(statusTable, 0, 1, "ควรทำ", text_color = color.white, bgcolor = color.new(color.gray, 60))
-        table.cell(statusTable, 1, 1, actionText, text_color = actionColor, bgcolor = color.new(color.gray, 60))
-
-        int  row          = 2
-        bool priceRowDone = false
-        for i in zoneLadder
-            float lvl = array.get(zoneLvlArr, i)
-            if not priceRowDone and lvl < close
-                table.cell(statusTable, 0, row, "► ราคา", text_color = color.yellow)
-                table.cell(statusTable, 1, row, str.tostring(close, format.mintick) +
-                     " · ATR " + str.tostring(atrValue, format.mintick), text_color = color.yellow)
-                priceRowDone := true
-                row += 1
-            bool  above = lvl >= close
-            color side  = above ? color.red : color.blue
-            table.cell(statusTable, 0, row, array.get(zoneTfArr, i) + (above ? " ต้าน" : " รับ"), text_color = side)
-            table.cell(statusTable, 1, row, str.tostring(lvl, format.mintick) + " · " + (above ? "+" : "−") +
-                 str.tostring(math.abs(lvl - close) / atrValue, "#.#") + " ATR", text_color = side)
-            row += 1
-        if not priceRowDone
-            table.cell(statusTable, 0, row, "► ราคา", text_color = color.yellow)
-            table.cell(statusTable, 1, row, str.tostring(close, format.mintick) +
-                 " · ATR " + str.tostring(atrValue, format.mintick), text_color = color.yellow)
-            row += 1
-
-        table.cell(statusTable, 0, row, "ที่ว่างในกรอบ", text_color = color.white)
-        table.cell(statusTable, 1, row, not useZones ? "ปิดโซนอยู่" : roomText, text_color = roomColor)
-    else
-        table.cell(statusTable, 0, 0, "ตอนนี้", text_color = color.white, bgcolor = color.new(color.gray, 40))
-        table.cell(statusTable, 1, 0, verdictText, text_color = verdictColor, bgcolor = color.new(color.gray, 40))
-        table.cell(statusTable, 0, 1, "ควรทำ", text_color = color.white, bgcolor = color.new(color.gray, 60))
-        table.cell(statusTable, 1, 1, actionText, text_color = actionColor, bgcolor = color.new(color.gray, 60))
-        table.cell(statusTable, 0, 2, "เหรียญ · ชาร์ต", text_color = color.white)
-        table.cell(statusTable, 1, 2, syminfo.ticker + " · " + chartName, text_color = color.white)
-        table.cell(statusTable, 0, 3, "เทรนด์ชาร์ตนี้", text_color = color.white)
-        table.cell(statusTable, 1, 3, trendText, text_color = trendColor)
-        table.cell(statusTable, 0, 4, "เทรนด์ TF ใหญ่", text_color = color.white)
-        table.cell(statusTable, 1, 4, htfText, text_color = htfColor)
-        table.cell(statusTable, 0, 5, "เข้าที่ราคา", text_color = color.white)
-        table.cell(statusTable, 1, 5, entryText, text_color = color.white)
-        table.cell(statusTable, 0, 6, "ตัดขาดทุน", text_color = color.white)
-        table.cell(statusTable, 1, 6, slText, text_color = color.white)
-        table.cell(statusTable, 0, 7, "เป้าที่ 1", text_color = color.white)
-        table.cell(statusTable, 1, 7, tp1Text, text_color = color.white)
-        table.cell(statusTable, 0, 8, "เป้าที่ 2", text_color = color.white)
-        table.cell(statusTable, 1, 8, tp2Text, text_color = color.white)
-        table.cell(statusTable, 0, 9, "แรงซื้อ-ขาย", text_color = color.white)
-        table.cell(statusTable, 1, 9, rsiText, text_color = color.white)
-        table.cell(statusTable, 0, 10, "ช่วงแกว่ง/แท่ง", text_color = color.white)
-        table.cell(statusTable, 1, 10, atrText, text_color = color.white)
-        table.cell(statusTable, 0, 11, "ข้อมูลที่โหลด", text_color = color.white)
-        table.cell(statusTable, 1, 11, barsText, text_color = warming ? color.orange : color.white)
-        table.cell(statusTable, 0, 12, "ตัวกรอง TF ใหญ่", text_color = color.white)
-        table.cell(statusTable, 1, 12, htfSourceText, text_color = htfSourceColor)
-        table.cell(statusTable, 0, 13, "แนวรับ/แนวต้าน", text_color = color.white)
-        table.cell(statusTable, 1, 13, zoneText, text_color = zoneColor)
-        table.cell(statusTable, 0, 14, "แนวโน้มหลาย TF", text_color = color.white)
-        table.cell(statusTable, 1, 14, mtfText, text_color = mtfColor)
+    directionText = direction == 1 ? "BUY" : direction == -1 ? "SELL" : "-"
+    stateText  = status == "NONE" ? "NO_SIGNAL" : directionText + " (" + status + ")"
+    stateColor = status == "STOPPED" ? color.gray : status == "TARGET_HIT" ? color.teal : direction == 1 ? color.lime : direction == -1 ? color.red : color.white
+    biasText   = na(emaSlow) ? "warming up" : emaFast > emaSlow ? "EMA fast > slow" : "EMA fast < slow"
+    biasColor  = na(emaSlow) ? color.gray : emaFast > emaSlow ? color.lime : color.red
+    htfName    = tfLabel(htfRequested)
+    htfText    = not htfValid ? "invalid: " + htfName + " is not above chart" :
+         na(htfEmaSlow) ? "warming up (" + htfName + ")" :
+         htfBullish ? "bullish (" + htfName + ")" : "bearish (" + htfName + ")"
+    htfColor   = not htfValid ? color.orange : na(htfEmaSlow) ? color.gray : htfBullish ? color.lime : color.red
+    htfModeText = htfMode == HTF_MODE_LADDER ? "ladder" : htfMode == HTF_MODE_MULT ? "x" + str.tostring(htfMultiplier) : "fixed"
+    htfSourceText = tfLabel(timeframe.period) + " → " + htfName + " (" + htfModeText + ")" +
+         (not useHtfFilter ? " · filter off" : not htfValid ? " · FILTER BLOCKS ALL SIGNALS" : "")
+    htfSourceColor = not useHtfFilter ? color.gray : not htfValid ? color.orange : color.white
+    tp1Text    = na(takeProfit1) ? "-" : str.tostring(takeProfit1, format.mintick) + (tp1Hit ? " (HIT)" : "")
+    slText     = na(managedSL) ? "-" : str.tostring(managedSL, format.mintick) + (tp1Hit and moveToBreakeven ? " (breakeven)" : "")
+    table.cell(statusTable, 0, 0, "Symbol", text_color = color.white)
+    table.cell(statusTable, 1, 0, syminfo.ticker + " · " + tfLabel(timeframe.period), text_color = color.white)
+    table.cell(statusTable, 0, 1, "State", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(statusTable, 1, 1, stateText, text_color = stateColor, bgcolor = color.new(color.gray, 50))
+    table.cell(statusTable, 0, 2, "Caution", text_color = color.white)
+    table.cell(statusTable, 1, 2, caution ? "YES — weakening" : "no", text_color = caution ? color.orange : color.white)
+    table.cell(statusTable, 0, 3, "Bias", text_color = color.white)
+    table.cell(statusTable, 1, 3, biasText, text_color = biasColor)
+    table.cell(statusTable, 0, 4, "HTF trend", text_color = color.white)
+    table.cell(statusTable, 1, 4, htfText, text_color = htfColor)
+    table.cell(statusTable, 0, 5, "Entry", text_color = color.white)
+    table.cell(statusTable, 1, 5, na(entryPrice) ? "-" : str.tostring(entryPrice, format.mintick), text_color = color.white)
+    table.cell(statusTable, 0, 6, "Stop Loss", text_color = color.white)
+    table.cell(statusTable, 1, 6, slText, text_color = color.white)
+    table.cell(statusTable, 0, 7, "Take Profit 1", text_color = color.white)
+    table.cell(statusTable, 1, 7, tp1Text, text_color = color.white)
+    table.cell(statusTable, 0, 8, "Take Profit 2", text_color = color.white)
+    table.cell(statusTable, 1, 8, na(takeProfit2) ? "-" : str.tostring(takeProfit2, format.mintick), text_color = color.white)
+    table.cell(statusTable, 0, 9, "RSI", text_color = color.white)
+    table.cell(statusTable, 1, 9, str.tostring(rsiValue, "#.##"), text_color = color.white)
+    table.cell(statusTable, 0, 10, "ATR", text_color = color.white)
+    table.cell(statusTable, 1, 10, str.tostring(atrValue, format.mintick), text_color = color.white)
+    table.cell(statusTable, 0, 11, "Bars loaded", text_color = color.white)
+    table.cell(statusTable, 1, 11, str.tostring(bar_index + 1), text_color = na(emaSlow) ? color.orange : color.white)
+    table.cell(statusTable, 0, 12, "HTF source", text_color = color.white)
+    table.cell(statusTable, 1, 12, htfSourceText, text_color = htfSourceColor)
