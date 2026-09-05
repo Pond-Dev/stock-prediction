@@ -32,6 +32,32 @@ a new signal replaces them, and the Stop-Loss/Take-Profit lines are rays that
 start at the signal bar and extend forward. The status table (top-right)
 always shows the current state.
 
+## Closed bars only: what you saw live is what you see after a reload
+
+Two rules make the chart reproducible, so a marker or a filter decision never
+changes after the fact:
+
+- **A BUY/SELL exists only once the bar has closed.** The crossover, RSI and
+  higher-timeframe checks are gated on `barstate.isconfirmed`, which is
+  always true on historical bars and true only on the final update of the
+  live bar. A cross that shows up mid-bar and unwinds before the close
+  therefore never draws a marker, never changes the tracked state, and never
+  fires an entry alert. This is the same closed-bar rule `tgxm predict` /
+  `tgxm autotrade` evaluate from closed MT5 candles.
+- **The higher-timeframe trend is read from the last *closed*
+  higher-timeframe bar**, on historical and live bars alike, using
+  TradingView's documented non-repainting form
+  (`request.security(..., expression[1], lookahead = barmerge.lookahead_on)`).
+  Without it, historical bars would judge closed higher-timeframe bars while
+  the live bar judged the one still forming, so a filter decision made live
+  could differ from what the chart shows after a reload. The cost is that the
+  `HTF trend` row lags one higher-timeframe bar (on a 3m chart, up to 15
+  minutes) behind the raw higher-timeframe EMAs.
+
+The EMA lines, the background colour, and the `Bias`/`RSI`/`ATR` rows are
+still live values of the forming bar, like any indicator; only the signals,
+the tracked trade, and the higher-timeframe judgement are closed-bar.
+
 ## Two confirmation filters (both on by default)
 
 - **RSI band** — a crossover only confirms if RSI is between 50 and
@@ -45,8 +71,7 @@ always shows the current state.
 
   Which higher timeframe is used is chosen by **"Higher timeframe comes
   from"** in Settings (group *Higher-timeframe filter*), and the result is
-  always shown live in the table's `ตัวกรอง TF ใหญ่` row as
-  `chart → HTF (mode)`:
+  always shown live in the table's `HTF source` row as `chart → HTF (mode)`:
 
   | Mode | Higher timeframe used |
   |---|---|
@@ -56,290 +81,139 @@ always shows the current state.
 
   Whatever the mode, the chosen timeframe must be **strictly higher than the
   chart's**. If it is not (for example Fixed = 1H while you're looking at an
-  H1 or H4 chart), the indicator refuses to use it: the `เทรนด์ TF ใหญ่` row
-  turns **orange**, and while "Require higher-timeframe trend agreement" is on
-  the `ตอนนี้`/`ควรทำ` rows say so in orange, the `ตัวกรอง TF ใหญ่` row adds
-  "บล็อกทุกสัญญาณ", and **no BUY/SELL can fire** until you pick a higher
-  timeframe, switch mode, or turn the filter off (with the filter off that row
-  just says "ปิดตัวกรองอยู่" in gray). It never silently falls
-  back to a same-or-lower timeframe, which `request.security` cannot
+  H1 or H4 chart), the indicator refuses to use it: the `HTF trend` row turns
+  **orange** and says `invalid: 1H is not above chart`, and while "Require
+  higher-timeframe trend agreement" is on the `HTF source` row adds
+  `FILTER BLOCKS ALL SIGNALS` in orange and **no BUY/SELL can fire** until
+  you pick a higher timeframe, switch mode, or turn the filter off (with the
+  filter off that row just adds `filter off` in gray). It never silently
+  falls back to a same-or-lower timeframe, which `request.security` cannot
   evaluate meaningfully.
 
-## The crossover level: knowing the trigger price before the bar closes
-
-The BUY/SELL label only appears *after* the EMAs have crossed. The table's
-`Cross price` row tells you the exact close price that would make them cross
-**on the current bar**, before it happens — plotted as a dotted ray across
-the chart (cyan when a close *above* it flips the pair, magenta when a close
-*below* does).
-
-It is arithmetic, not a forecast. An EMA is
-`EMA = α·close + (1-α)·EMA[1]` with `α = 2/(period+1)`, so setting
-`emaFast == emaSlow` and solving for `close` gives one exact number:
-
-```
-Cross price = [ (1-αslow)·EMAslow[1] − (1-αfast)·EMAfast[1] ] / (αfast − αslow)
-```
-
-Every input is a value from the **last closed bar**, so the level is fixed
-for the whole of the current bar instead of drifting with the live price.
-Close this bar past it and `ta.crossover`/`ta.crossunder` fires; close short
-of it and it does not. Nothing here says the price *will* get there.
-
-- `Cross distance` shows the gap between the live price and that level in
-  ATR units — the honest reality check. `0.30 ATR away` is one ordinary
-  bar's range; `6.00 ATR away` means the cross is not happening this bar no
-  matter what the candles look like.
-- The row turns **yellow** once the distance is inside "Pre-cross alert
-  distance (ATR)" (default 0.25), which is the same condition the two
-  "EMA cross level near" alerts fire on.
-- `-` means the level is unavailable: the EMAs are still warming up, both
-  periods are set to the same value, or the arithmetic lands on a
-  non-positive price (which no instrument can reach).
-- A cross at the level is **not** an entry. The RSI and higher-timeframe
-  filters are still applied afterwards, so a BUY/SELL may still be declined
-  — see the filters section above.
-- Turn the ray off with "Show next-bar EMA crossover price" in Settings; the
-  value stays available in TradingView's Data Window as `EMA crossover
-  price`.
-
-## Watching 1m / 3m / 5m / 15m without switching charts
-
-The higher-timeframe filter above compares the chart against **one** higher
-timeframe. Settings group *Multi-timeframe agreement* (on by default) reads
-**four** timeframes at once and puts them in a single table row, so comparing
-1m against 3m against 5m no longer means flipping between charts:
-
-```
-แนวโน้มหลาย TF   1m▲  3m▲  5m▲  15m▼ · 3▲/1▼
-```
-
-One `▲`/`▼` per timeframe is that timeframe's own EMA fast/slow relationship,
-followed by the tally. The row is **lime** when every timeframe agrees up,
-**red** when every one agrees down, and **orange** the moment they disagree —
-orange is the "the timeframes are fighting, sit this one out" state.
-
-Which four is up to you (`Timeframe 1`…`Timeframe 4`, defaults 1m/3m/5m/15m),
-and `How many timeframes` trims the row to the first 1–4 of them.
-
-**Put the chart on the lowest timeframe you want to watch.** `request.security`
-can only resolve the chart's own timeframe or above, so a slot *below* the
-chart cannot be read: it shows as `–`, never counts, and the row says
-`– อ่านไม่ได้ (ต่ำกว่าชาร์ต)`. On a **1m** chart all four defaults resolve; on
-a 3m chart the 1m slot goes dark. This is the same refusal as the
-higher-timeframe filter — it never silently substitutes a timeframe it cannot
-evaluate.
-
-By default the row only *shows* — **the BUY/SELL rule is unchanged and
-identical to `tgxm autotrade` / `tgxm predict`**. Turn on "Block signals unless
-enough timeframes agree" to make it a filter: a crossover is declined unless at
-least `Minimum agreeing timeframes` of them already point that way, and
-`ควรทำ` gains a `หลาย TF ✓`/`✗` alongside the RSI and higher-timeframe marks.
-It **fails closed** like the higher-timeframe filter: an unreadable slot never
-counts, so requiring 4 while one slot is dark blocks every signal — the row
-spells that out with `บล็อกทุกสัญญาณ` rather than letting you wonder.
-
-## Supply / demand zones: labelled boxes price bounces between
-
-Settings group *Supply / demand zones* (on by default) draws red/blue boxes of
-the kind you may know from Smart-Money-Concepts indicators, built from this
-script's own data — **one set per watched timeframe**, using the same
-`Timeframe 1`…`Timeframe 4` as the multi-timeframe row above:
-
-- Each timeframe contributes its **two most recent confirmed swing highs and
-  swing lows** (`ta.pivothigh`/`ta.pivotlow`, "Swing length" bars each side,
-  evaluated in that timeframe's own context).
-- Every box carries the label of the timeframe that produced it — `15m ต้าน`,
-  `3m รับ` — so you can tell a 1m wiggle from a 15m structure at a glance.
-- **Red (ต้าน) means the level is above price, blue (รับ) means below.** A
-  level is classified by which side of price it sits on right now, so a swing
-  high price has broken through is *not deleted* the way an
-  "unmitigated order block" rule deletes it — it flips to blue and keeps
-  marking the level on the way back down. That is why there is nearly always a
-  box on both sides, even during a one-way run.
-- Box thickness comes from the ATR of the timeframe it came from ("Box
-  thickness", 0.25 ATR by default), so a 15m box is naturally wider than a 1m
-  one, and two timeframes marking the same price (within 0.15 ATR) collapse to
-  one box keeping the higher timeframe's label.
-- Only the **nearest "Show only the nearest"** boxes (4 by default) are drawn.
-  The nearest level above price and the nearest below are each reserved a
-  slot, so the range you are trading in is never shown with one side missing.
-- Because a swing is only confirmed "Swing length" bars later on its own
-  timeframe, a box appears late but is never redrawn retroactively — no
-  repainting. A 15m box needs five closed 15m bars.
-
-Boxes are redrawn from scratch on the last bar rather than accumulated
-historically: they mark where price is *now*, not every level that ever formed.
-
-The gap between the nearest red box above and the nearest blue box below is
-the range price is currently trading in. The table's `แนวรับ/แนวต้าน` row
-names both, with the timeframe each came from and the distance in ATR:
-
-```
-แนวรับ/แนวต้าน   ต้าน 15m 4394.10 (ห่าง 0.9 ATR) · รับ 3m 4386.75 (ห่าง 2.7 ATR) · กรอบกว้าง 3.6 ATR
-```
-
-Within "Near a box" (0.5 ATR by default) the row turns orange and:
-
-- while waiting, `ควรทำ` adds `ติดแนวต้าน ⚠` / `ติดแนวรับ ⚠` when the next
-  signal would fire straight into the opposite box;
-- while holding a trade, `ควรทำ` turns orange with `ใกล้แนวต้าน ระวังเด้งกลับ`
-  (or แนวรับ for a SELL).
-
-By default that is all the boxes do — **the BUY/SELL rule itself is unchanged
-and identical to `tgxm autotrade` / `tgxm predict`**. Turn on "Block BUY near
-ต้าน / SELL near รับ" to make them a third filter (a crossover within
-"Near a box" of the opposite box is declined, and the `⚠` becomes `✗`); the
-"Show raw crossovers a filter blocked" debug markers cover it like the other
-two. That makes the chart stricter than the bot, which has no zone filter.
+The background is tinted **green** while this chart's EMAs and the higher
+timeframe agree upward, **red** while they agree downward, and left clear
+while they disagree — the clear stretch is exactly where a crossover would
+be declined by the higher-timeframe filter.
 
 ## Trade management after entry (TP1 → breakeven → TP2)
 
 Once a BUY/SELL confirms, the indicator keeps tracking it bar by bar, not
 just at entry:
 
-- **TP1 hit** → label switches to "ถึงเป้า 1", and Stop Loss moves to
-  breakeven (the entry price) — turn off "Move Stop Loss to breakeven after
-  TP1" in Settings to keep the original ATR-based Stop Loss instead. The Stop
-  Loss line on the chart moves to show this live.
+- **TP1 hit** → the label becomes `BUY — TP1 HIT`, the `State` row becomes
+  `BUY (TP1_HIT)`, `Take Profit 1` gains `(HIT)`, and the Stop Loss moves to
+  breakeven (the entry price; `Stop Loss` shows `(breakeven)`) — turn off
+  "Move Stop Loss to breakeven after TP1" in Settings to keep the original
+  ATR-based Stop Loss instead. The Stop Loss line on the chart moves to show
+  this live.
 - **TP2 hit** or **Stop Loss hit** (original, or breakeven after TP1) closes
   the trade. By default ("Clear marker immediately when a trade closes") the
-  marker and lines disappear right away and `ตอนนี้` returns to
-  "รอจังหวะ — ยังไม่มีไม้" —
+  marker and lines disappear right away and `State` returns to `NO_SIGNAL` —
   the outcome is what the "target hit"/"stopped out" alerts are for, not
   something left sitting on the chart. Turn that setting off to instead see
-  a frozen "ถึงเป้าหมาย"/"โดนตัดขาดทุน" label until the next fresh signal
-  replaces it.
-- The `ตอนนี้` row says "เริ่มอ่อนแรง" (and `ควรทำ` turns orange) whenever
-  price closes back on the wrong side of the fast EMA while still in the
-  trade — an early warning that momentum is fading, before the slow EMA
-  cross that would fully invalidate/cancel it. It clears itself
-  automatically once price closes back on the right side.
-- Once Stop Loss/TP2 closes the trade, the EMA-reversal invalidation rule
-  no longer applies to it — a closed trade stays closed until the next
-  fresh signal, it never comes back.
+  a frozen `BUY — TARGET HIT` (teal) / `BUY — STOPPED` (gray) label, and
+  `BUY (TARGET_HIT)` / `BUY (STOPPED)` in the `State` row, until the next
+  fresh signal replaces it.
+- The `Caution` row says `YES — weakening` (orange) whenever price is on the
+  wrong side of the fast EMA while still in the trade — an early warning that
+  momentum is fading, before the slow EMA cross that would fully cancel it.
+  It clears itself once price is back on the right side.
+- A raw reverse crossover on the chart's own timeframe (fast EMA crossing
+  back through the slow one at a bar close, filters or not) cancels an `OPEN`
+  trade outright: the marker and lines are removed and `State` returns to
+  `NO_SIGNAL`. After TP1 the trade is instead left to run to breakeven or
+  TP2.
+- Once Stop Loss/TP2 closes the trade, the reversal rule no longer applies
+  to it — a closed trade stays closed until the next fresh signal, it never
+  comes back.
 - Same-bar ambiguity: if one bar's range touches both Stop Loss and a
   Take-Profit level, this checks Stop Loss first, then TP2, then TP1 — a
   conservative assumption, not a real fill simulation. On a fast-moving bar
   the actual outcome could differ.
+- Stop Loss / Take Profit touches are detected from the bar's high/low as
+  the bar forms; a touch cannot un-happen, so unlike an entry this does not
+  wait for the close. The signal bar itself is not checked, and the entry
+  price is that bar's close, which a real fill would not get — this is an
+  advisory, not a fill simulation.
 
 Separate alerts exist for each step (TP1 hit, target hit, stopped out), on
-top of the entry alerts — set all of them to **Once Per Bar Close** for the
-same repainting reason as the entry alerts, described below.
-
-## Two table layouts
-
-"Status table shows" picks what the table is for:
-
-- **Everything** (default) — every row listed below.
-- **Zones only (scalping)** — drops the rows you do not re-read every minute
-  and turns the drawn boxes into a price ladder instead, highest first, with a
-  `► ราคา` row marking where price sits between them:
-
-  ```
-  ตอนนี้          รอจังหวะ — ยังไม่มีไม้
-  ควรทำ           รอ SELL · EMA ต้องตัดลง ✗ · RSI ✗ · 15m ✓
-  15m ต้าน        4408.20 · +1.8 ATR
-  5m ต้าน         4404.10 · +0.4 ATR
-  ► ราคา          4402.92 · ATR 3.01
-  1m รับ          4397.54 · −1.8 ATR
-  15m รับ         4393.77 · −3.1 ATR
-  ที่ว่างในกรอบ     บน 0.4 ATR · ล่าง 1.8 ATR → ชนต้าน ซื้อเสี่ยง
-  ```
-
-  The last row is the one to read before entering: how much room is left to
-  the box above and below, and a verdict — `ชนต้าน ซื้อเสี่ยง` /
-  `ชนรับ ขายเสี่ยง` (orange, within 0.3 ATR of that side),
-  `บีบระหว่างสองกล่อง` when both are that close, or `กลางกรอบ`. When one side
-  has no box at all the row says `บนโล่ง`/`ล่างโล่ง` and the verdict becomes
-  `อยู่เหนือทุกกล่อง ไม่มีเป้าบน` / `อยู่ใต้ทุกกล่อง ไม่มีตัวรับ` — price has
-  broken past every level that side, so there is nothing left to bounce off.
-
-  `ตอนนี้` and `ควรทำ` stay, because the boxes never produce a signal on their
-  own — see below.
+top of the entry alerts; see "Setting a real-time alert" below.
 
 ## Reading the table
 
-In the **Everything** layout the top two rows answer "what now?" so you never
-have to derive it from the indicator rows underneath:
-
 | Row | What it tells you |
 |---|---|
-| `ตอนนี้` | The one-line verdict: loading, misconfigured, holding a trade, or waiting. |
-| `ควรทำ` | The next action. While waiting it lists exactly what the next signal still needs, e.g. `รอ BUY · EMA ต้องตัดขึ้น ✗ · RSI ✗ · 4H ✗` — a `✓` marks a condition already satisfied. |
-| `เทรนด์ชาร์ตนี้` / `เทรนด์ TF ใหญ่` | The raw EMA relationship on each timeframe. |
-| `เข้าที่ราคา` / `ตัดขาดทุน` / `เป้าที่ 1` / `เป้าที่ 2` | The live levels of the trade being tracked. |
-| `แรงซื้อ-ขาย` | RSI plus which side it currently supports. |
-| `ช่วงแกว่ง/แท่ง` | ATR, plus how far the Stop Loss would sit from entry right now. |
-| `ข้อมูลที่โหลด` | Bars available; turns orange while the slow EMA is still warming up. |
-| `ตัวกรอง TF ใหญ่` | Which higher timeframe is in use and where it came from. |
-| `แนวรับ/แนวต้าน` | Nearest box above (ต้าน) and below (รับ), each with the timeframe it came from and the distance in ATR, plus the width of the range between them; orange when price is near either. |
-| `แนวโน้มหลาย TF` | One ▲/▼ per watched timeframe plus the tally; lime/red when they all agree, orange when they disagree or a slot is unreadable. |
+| `Symbol` | Ticker and chart timeframe the values below belong to. |
+| `State` | `NO_SIGNAL`, or `BUY (OPEN)` / `SELL (OPEN)`, `… (TP1_HIT)`, and — only with "Clear marker immediately" off — `… (TARGET_HIT)` / `… (STOPPED)`. Changes only on a confirmed signal, a tracked exit, or a reverse crossover at a bar close. |
+| `Caution` | `YES — weakening` (orange) while price is on the wrong side of the fast EMA during a trade; otherwise `no`. |
+| `Bias` | The raw EMA relationship on this chart, live: `EMA fast > slow` / `EMA fast < slow`, or `warming up`. |
+| `HTF trend` | The higher timeframe's own EMA relationship from its last closed bar: `bullish (15m)` / `bearish (15m)`, `warming up (15m)`, or orange `invalid: … is not above chart`. |
+| `Entry` / `Stop Loss` / `Take Profit 1` / `Take Profit 2` | The live levels of the trade being tracked; `-` when there is none. |
+| `RSI` / `ATR` | Current values on this chart. |
+| `Bars loaded` | Bars available; orange while the slow EMA is still warming up. |
+| `HTF source` | Which higher timeframe is in use and where it came from, e.g. `3m → 15m (ladder)`; adds `filter off` or `FILTER BLOCKS ALL SIGNALS`. |
 
-`ตอนนี้` only changes on a *confirmed* signal (passed both filters) or when
-the raw EMA relationship that produced it reverses. `เทรนด์ชาร์ตนี้` and
-`เทรนด์ TF ใหญ่` always show the current raw relationship on their own
-timeframe, filters or not. So "ถือ BUY อยู่" while `เทรนด์ชาร์ตนี้` says
-ขาลง should never happen — if you see that, it's a bug; but "ถือ BUY อยู่"
-while `เทรนด์ TF ใหญ่` says ขาลง can happen briefly (state hasn't been
-invalidated by an unfiltered reversal on the chart's own timeframe yet) and
-is normal.
+`Bias` and `HTF trend` always show the raw relationship on their own
+timeframe, filters or not. `BUY (OPEN)` while `Bias` says `EMA fast < slow`
+can only be seen mid-bar (the live EMAs have crossed back but the bar has
+not closed yet); if it survives the close it's a bug. `BUY (TP1_HIT)` with
+`Bias` against it, or any `BUY` while `HTF trend` says bearish, can happen
+and is normal: after TP1 only Stop Loss/TP2 end the trade, and the higher
+timeframe never cancels one.
 
 ## "I don't see any BUY/SELL marker"
 
-That's a normal state, not a bug, and the table's `ตอนนี้`/`ควรทำ` rows say
-which of these it is:
+That's a normal state, not a bug, and the table says which of these it is:
 
-- **"กำลังโหลดข้อมูล..."** — `ta.ema` with the default 50-period slow EMA
-  needs 50 bars of history before it is defined at all; before that, a
-  crossover cannot be evaluated. Load more history (zoom out, or switch to a
-  timeframe with a longer available history).
-- **"ตั้งค่าผิด — ไม่มีสัญญาณแน่นอน"** —
-  the higher timeframe you picked is not above the chart's timeframe
+- **`Bias` says `warming up` / `Bars loaded` is orange** — `ta.ema` with the
+  default 50-period slow EMA needs 50 bars of history before it is defined
+  at all; before that, a crossover cannot be evaluated. Load more history
+  (zoom out, or switch to a timeframe with a longer available history). The
+  higher timeframe has its own warm-up: `HTF trend` says `warming up (…)`
+  until its slow EMA is defined, and no signal can pass until it is.
+- **`HTF trend` is orange and `HTF source` says `FILTER BLOCKS ALL SIGNALS`**
+  — the higher timeframe you picked is not above the chart's timeframe
   (typically Fixed mode after switching to a higher chart). Pick a higher
   one, switch to Preset ladder/Multiplier, or turn the higher-timeframe
   filter off. Signals are deliberately blocked rather than evaluated
   against a meaningless timeframe.
 - **A small gray triangle appears at a spot with no colored BUY/SELL
   label** — turn on "Show raw crossovers a filter blocked (debug)" in
-  Settings first; it's off by default. It marks a bar where an EMA
+  Settings first; it's off by default. It marks a closed bar where an EMA
   crossover *did* happen, but RSI or the higher-timeframe trend blocked it
   — the filters working as intended, not a bug.
 - **Turn off "Require RSI confirmation" and/or "Require higher-timeframe
   trend agreement"** to see raw EMA crossovers as full BUY/SELL signals,
   unfiltered. Useful for checking whether the rule is finding crossovers at
   all before deciding a filter is too strict for your taste.
-- Otherwise: **"รอจังหวะ — ยังไม่มีไม้"** — the fast EMA genuinely has not
-  crossed the slow EMA since you added the indicator. A signal only fires
-  the *instant* that relationship flips, so an already-crossed pair produces
-  nothing until it crosses back. The `ควรทำ` row names which direction can
-  fire next and which conditions are still missing.
+- **The bar hasn't closed yet** — a cross you can see forming on the live
+  bar draws nothing until that bar closes; see "Closed bars only" above.
+- Otherwise: **`State` is `NO_SIGNAL`** — the fast EMA genuinely has not
+  crossed the slow EMA at a bar close since you added the indicator. A
+  signal only fires the *instant* that relationship flips, so an
+  already-crossed pair produces nothing until it crosses back.
 
 ## Setting a real-time alert
 
 Click the clock/alarm icon on the chart toolbar → **Add Alert** → set
 **Condition** to this indicator → pick one of "Advisory BUY (entry)",
-"...SELL (entry)", "...TP1 hit", "...target hit", "...stopped out", or one of
-the two "EMA cross level near" pre-cross warnings (add one alert per
-condition you want, per symbol/chart) → set **Trigger** to
-**Once Per Bar Close**, not "Once Per Bar".
+"Advisory SELL (entry)", "Advisory TP1 hit", "Advisory target hit",
+"Advisory stopped out" (add one alert per condition you want, per
+symbol/chart) → set **Trigger**:
 
-This rule is computed from `ta.ema`/`ta.rsi`/`ta.atr` on the still-forming
-live bar, so a signal can appear and then vanish before that bar actually
-closes (a well-known Pine behavior called repainting). "Once Per Bar Close"
-waits for the bar to finish before alerting, matching exactly what
-`tgxm predict` evaluates from already-closed MT5 candles. It cannot predict a
-price outcome; it reacts the instant its rule becomes true on each newly
-closed bar, going forward from when you add it. The one thing it does state
-ahead of time is the `Cross price` level — the price the EMAs cross at, not a
-claim that the price will reach it.
+- The two **entry** conditions are only ever true on the closing update of a
+  bar (see "Closed bars only"), so "Once Per Bar" and "Once Per Bar Close"
+  behave the same for them; **Once Per Bar Close** remains the recommended,
+  unambiguous choice. Either way the alert fires the instant the rule becomes
+  true on a newly closed bar, going forward from when you add it. It cannot
+  predict a price outcome.
+- The three **exit** conditions become true on the first update in which the
+  bar's high/low touches the level. **Once Per Bar** gives the earliest
+  warning; **Once Per Bar Close** waits for the bar to finish. Both report
+  the same touch.
 
-The two "EMA cross level near" conditions are the exception where **Once Per
-Bar** can be the right trigger: their whole point is to warn you while the
-bar is still open. They are computed from last-closed-bar values only, so
-unlike the entry signals they do not repaint within the bar. They fire on
-proximity to the level, never on a confirmed entry — the RSI and
-higher-timeframe filters have not been applied at that point.
+The alert message carries `{{ticker}}` and `{{close}}` — the close at the
+moment the alert fires, not the exact level touched.
 
 ## What it is not
 

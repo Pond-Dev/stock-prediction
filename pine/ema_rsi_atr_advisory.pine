@@ -79,8 +79,16 @@ crossedDown = ta.crossunder(emaFast, emaSlow)
 bullishRsiOk = rsiValue > 50 and rsiValue < rsiOverbought
 bearishRsiOk = rsiValue < 50 and rsiValue > rsiOversold
 
-htfEmaFast = request.security(syminfo.tickerid, htfTimeframe, ta.ema(close, emaFastLen), lookahead = barmerge.lookahead_off)
-htfEmaSlow = request.security(syminfo.tickerid, htfTimeframe, ta.ema(close, emaSlowLen), lookahead = barmerge.lookahead_off)
+// Confirmed higher-timeframe values only.  The [1] offset together with
+// lookahead_on returns the EMA of the last *closed* higher-timeframe bar on
+// every chart bar, historical and realtime alike (TradingView's documented
+// non-repainting idiom; neither half can be dropped without breaking it).
+// Without it, historical bars would see closed higher-timeframe bars while
+// the realtime bar saw the still-forming one, so the trend the filter judged
+// live could differ from what the chart shows after a reload.  It also
+// matches the bot, which only ever judges closed higher-timeframe candles.
+htfEmaFast = request.security(syminfo.tickerid, htfTimeframe, ta.ema(close, emaFastLen)[1], lookahead = barmerge.lookahead_on)
+htfEmaSlow = request.security(syminfo.tickerid, htfTimeframe, ta.ema(close, emaSlowLen)[1], lookahead = barmerge.lookahead_on)
 htfBullish = htfValid and htfEmaFast > htfEmaSlow
 htfBearish = htfValid and htfEmaFast < htfEmaSlow
 
@@ -89,12 +97,18 @@ htfBearish = htfValid and htfEmaFast < htfEmaSlow
 htfGateUp   = not useHtfFilter or htfBullish
 htfGateDown = not useHtfFilter or htfBearish
 
-buySignal  = crossedUp   and (not useRsiFilter or bullishRsiOk) and htfGateUp
-sellSignal = crossedDown and (not useRsiFilter or bearishRsiOk) and htfGateDown
+// A signal only exists on a closed bar.  barstate.isconfirmed is always true
+// on historical bars and true only on the final update of the realtime bar,
+// so a crossover that shows up mid-bar and unwinds before the close never
+// draws a marker, never changes state, and never fires an alert -- the same
+// closed-bar rule the bot evaluates.
+barClosed  = barstate.isconfirmed
+buySignal  = barClosed and crossedUp   and (not useRsiFilter or bullishRsiOk) and htfGateUp
+sellSignal = barClosed and crossedDown and (not useRsiFilter or bearishRsiOk) and htfGateDown
 
-plotshape(showFiltered and crossedUp and not buySignal, title = "Crossed up, filtered out",
+plotshape(showFiltered and barClosed and crossedUp and not buySignal, title = "Crossed up, filtered out",
      style = shape.triangleup, location = location.belowbar, color = color.new(color.gray, 40), size = size.tiny)
-plotshape(showFiltered and crossedDown and not sellSignal, title = "Crossed down, filtered out",
+plotshape(showFiltered and barClosed and crossedDown and not sellSignal, title = "Crossed down, filtered out",
      style = shape.triangledown, location = location.abovebar, color = color.new(color.gray, 40), size = size.tiny)
 
 bgColor = na(emaSlow) ? na :
@@ -152,7 +166,7 @@ else if status == "OPEN" or status == "TP1_HIT"
     bool hitSL  = isBuy ? low <= managedSL : high >= managedSL
     bool hitTp2 = isBuy ? high >= takeProfit2 : low <= takeProfit2
     bool hitTp1 = not tp1Hit and (isBuy ? high >= takeProfit1 : low <= takeProfit1)
-    bool reversed = status == "OPEN" and (isBuy ? crossedDown : crossedUp)
+    bool reversed = barClosed and status == "OPEN" and (isBuy ? crossedDown : crossedUp)
 
     if hitSL
         slHitEvent := true

@@ -1,0 +1,829 @@
+//@version=6
+// XAUUSD Short Scalper STRATEGY -- backtest front end for the same core as
+// xauusd_short_scalper.pine.  Documentation: pine/XAUUSD_SHORT_SCALPER.md
+//
+// Execution model defaults (all editable in Settings > Properties):
+//   * 1 contract per trade (position sizing is not the object of the study);
+//   * commission 0.125 cash per contract per order = 0.25 per round trip, i.e.
+//     the default 0.25 spread of the "Execution model" group is PAID here --
+//     change both together;
+//   * slippage 2 ticks on every market fill (entries, market exits);
+//   * no bar magnifier (enable it in Properties on plans that have it -- on a
+//     1-minute chart TradingView otherwise assumes an intrabar path).
+strategy("XAUUSD Short Scalper Strategy (1m-5m, short only)", shorttitle = "XAU Short Scalper BT", overlay = true,
+     pyramiding = 0, initial_capital = 10000, default_qty_type = strategy.fixed, default_qty_value = 1,
+     commission_type = strategy.commission.cash_per_contract, commission_value = 0.125, slippage = 2,
+     calc_on_every_tick = false, process_orders_on_close = false,
+     max_labels_count = 200, max_lines_count = 200)
+
+// ===================== CORE BEGIN =====================
+// This block is byte-identical in xauusd_short_scalper.pine (indicator) and
+// xauusd_short_scalper_strategy.pine (strategy).  Edit it in one place and run
+// `python scripts/check_pine_core.py` to prove both copies still match.
+//
+// Non-repainting contract (see pine/XAUUSD_SHORT_SCALPER.md):
+//   * every signal is evaluated on the bar CLOSE (barstate.isconfirmed);
+//   * swing points come from ta.pivothigh/low and only exist once the
+//     confirming bars have closed -- they never move afterwards;
+//   * no request.security, no lookahead, no varip, no future bars;
+//   * historical bars and the realtime bar run exactly the same code path.
+
+G_CORE  = "1 · Core indicators"
+G_STRUC = "2 · Market structure"
+G_SETUP = "3 · Setups"
+G_SCORE = "4 · Score & thresholds"
+G_VOL   = "5 · Volatility filter"
+G_CHASE = "6 · Anti-chasing filter"
+G_SESS  = "7 · Session filter"
+G_SL    = "8 · Stop Loss"
+G_TP    = "9 · Take Profit / Quick TP"
+G_BE    = "10 · Break-even / lock"
+G_LIFE  = "11 · Trade lifecycle"
+G_VIEW  = "12 · Display"
+
+SL_STRUCT = "Structure"
+SL_ATR    = "ATR"
+SL_HYBRID = "Hybrid"
+TP_R      = "Fixed R"
+TP_ATR    = "ATR"
+TP_MICRO  = "Micro structure"
+
+atrLen     = input.int(14, "ATR length", minval = 1, group = G_CORE, display = display.none)
+emaFastLen = input.int(9, "EMA fast", minval = 1, group = G_CORE, display = display.none)
+emaMidLen  = input.int(21, "EMA mid (dynamic resistance)", minval = 2, group = G_CORE, display = display.none)
+emaSlowLen = input.int(50, "EMA slow (bias)", minval = 3, group = G_CORE, display = display.none)
+rsiLen     = input.int(14, "RSI length", minval = 2, group = G_CORE, display = display.none)
+slopeLen   = input.int(3, "Slope / momentum lookback (bars)", minval = 1, maxval = 20, group = G_CORE, display = display.none)
+HTF_AUTO  = "Auto (1-3m → 15m, 5-15m → 1H, 30m-1H → 4H)"
+HTF_FIXED = "Fixed timeframe"
+useHtf    = input.bool(true, "Higher-timeframe bias filter (no short while the higher TF is bullish)", group = G_CORE,
+     tooltip = "Reads EMA mid / EMA slow and the close of the LAST CLOSED higher-timeframe bar (non-repainting). A bullish higher timeframe forces NO SHORT; a bearish one adds a bias point. A higher timeframe that is not above the chart blocks every short (fail closed).", display = display.none)
+htfMode   = input.string(HTF_AUTO, "Higher timeframe comes from", options = [HTF_AUTO, HTF_FIXED], group = G_CORE, display = display.none)
+htfFixed  = input.timeframe("15", "Fixed higher timeframe", group = G_CORE, display = display.none)
+
+swingLen   = input.int(3, "Swing pivot strength (bars each side)", minval = 1, maxval = 10, group = G_STRUC,
+     tooltip = "A swing high/low is confirmed only after this many bars have closed on each side. Larger = fewer, cleaner swings, later confirmation.", display = display.none)
+bosMemory  = input.int(20, "Break of structure counts as recent for (bars)", minval = 1, maxval = 200, group = G_STRUC, display = display.none)
+srLookback = input.int(20, "Recent high/low lookback (bars)", minval = 5, maxval = 200, group = G_STRUC, display = display.none)
+
+enPullback     = input.bool(true, "A · Pullback short", group = G_SETUP, display = display.none)
+enBreakdown    = input.bool(true, "B · Breakdown short", group = G_SETUP, display = display.none)
+enRejection    = input.bool(true, "C · Rejection short", group = G_SETUP, display = display.none)
+enMomentum     = input.bool(true, "D · Momentum continuation short", group = G_SETUP, display = display.none)
+pbLookback     = input.int(8, "A · Pullback window (bars)", minval = 3, maxval = 30, group = G_SETUP, display = display.none)
+bdConfirmBars  = input.int(1, "B · Closes below support required", minval = 1, maxval = 2, group = G_SETUP,
+     tooltip = "1 = the first strong close below support triggers. 2 = wait for a second close below (later entry, fewer false breakdowns).", display = display.none)
+bdBreakBufAtr  = input.float(0.10, "B · Close must be below support by (ATR)", minval = 0.0, step = 0.05, group = G_SETUP, display = display.none)
+rjWickPct      = input.float(0.50, "C · Min upper-wick share of range", minval = 0.2, maxval = 0.9, step = 0.05, group = G_SETUP, display = display.none)
+rjSpikeAtr     = input.float(0.60, "C · Min spike into resistance (ATR)", minval = 0.1, step = 0.1, group = G_SETUP, display = display.none)
+rjRequireBias  = input.bool(true, "C · Rejection needs at least WATCH bias", group = G_SETUP, display = display.none)
+mcConsBars     = input.int(4, "D · Consolidation length (bars)", minval = 2, maxval = 12, group = G_SETUP, display = display.none)
+mcConsRangeAtr = input.float(1.2, "D · Max consolidation range (ATR)", minval = 0.3, step = 0.1, group = G_SETUP, display = display.none)
+mcSlopeAtr     = input.float(0.25, "D · Min EMA-fast down-slope (ATR per lookback)", minval = 0.0, step = 0.05, group = G_SETUP, display = display.none)
+mcMaxDropAtr   = input.float(3.0, "D · Max drop from 20-bar high (ATR)", minval = 0.5, step = 0.25, group = G_SETUP, display = display.none)
+
+thWeak    = input.int(60, "WEAK threshold", minval = 0, maxval = 100, group = G_SCORE, display = display.none)
+thGood    = input.int(70, "GOOD SHORT threshold", minval = 0, maxval = 100, group = G_SCORE, display = display.none)
+thStrong  = input.int(80, "HIGH QUALITY SHORT threshold", minval = 0, maxval = 100, group = G_SCORE, display = display.none)
+allowWeak = input.bool(false, "Trade WEAK scores too (not recommended)", group = G_SCORE, display = display.none)
+
+volBaseLen  = input.int(100, "ATR baseline length (bars)", minval = 10, group = G_VOL, display = display.none)
+volLow      = input.float(0.70, "LOW below (ATR / baseline)", minval = 0.1, step = 0.05, group = G_VOL, display = display.none)
+volHigh     = input.float(1.50, "HIGH above", minval = 0.5, step = 0.05, group = G_VOL, display = display.none)
+volExtreme  = input.float(2.20, "EXTREME above", minval = 1.0, step = 0.1, group = G_VOL, display = display.none)
+allowLowVol = input.bool(false, "Allow entries in LOW volatility", group = G_VOL, display = display.none)
+
+chaseBars       = input.int(5, "Drop window (bars)", minval = 2, maxval = 30, group = G_CHASE, display = display.none)
+chaseMaxDropAtr = input.float(2.5, "Max drop inside window (ATR)", minval = 0.5, step = 0.25, group = G_CHASE, display = display.none)
+chaseMaxBarAtr  = input.float(2.0, "Max bearish bar range (ATR)", minval = 0.5, step = 0.25, group = G_CHASE, display = display.none)
+chaseMaxDistAtr = input.float(2.0, "Max distance below EMA mid (ATR)", minval = 0.5, step = 0.25, group = G_CHASE, display = display.none)
+chaseAtrExp     = input.float(2.0, "Max ATR expansion vs window start (x)", minval = 1.1, step = 0.1, group = G_CHASE, display = display.none)
+
+sessTz        = input.string("Etc/UTC", "Session timezone", group = G_SESS,
+     tooltip = "Any IANA name (Etc/UTC, Europe/London, America/New_York, Asia/Bangkok). Session times below are read in this timezone.", display = display.none)
+sessAsia      = input.session("0000-0800", "Asian session", group = G_SESS, display = display.none)
+sessLondon    = input.session("0700-1600", "London session", group = G_SESS, display = display.none)
+sessNy        = input.session("1300-2100", "New York session", group = G_SESS, display = display.none)
+allowAsia     = input.bool(true, "Allow shorts in Asian", group = G_SESS, display = display.none)
+allowLondon   = input.bool(true, "Allow shorts in London", group = G_SESS, display = display.none)
+allowNy       = input.bool(true, "Allow shorts in New York", group = G_SESS, display = display.none)
+allowOff      = input.bool(false, "Allow shorts outside all sessions", group = G_SESS, display = display.none)
+scSessAsia    = input.int(4, "Session score · Asian (0-10)", minval = 0, maxval = 10, group = G_SESS, display = display.none)
+scSessLondon  = input.int(8, "Session score · London", minval = 0, maxval = 10, group = G_SESS, display = display.none)
+scSessNy      = input.int(10, "Session score · New York", minval = 0, maxval = 10, group = G_SESS, display = display.none)
+scSessOverlap = input.int(10, "Session score · London/NY overlap", minval = 0, maxval = 10, group = G_SESS, display = display.none)
+scSessOff     = input.int(0, "Session score · outside sessions", minval = 0, maxval = 10, group = G_SESS, display = display.none)
+
+slMode    = input.string(SL_HYBRID, "Stop Loss mode", options = [SL_STRUCT, SL_ATR, SL_HYBRID], group = G_SL, display = display.none)
+slAtrMult = input.float(1.0, "ATR mode: SL distance (ATR)", minval = 0.2, step = 0.1, group = G_SL, display = display.none)
+slBufAtr  = input.float(0.10, "Structure buffer above swing/rejection high (ATR)", minval = 0.0, step = 0.05, group = G_SL, display = display.none)
+slMinAtr  = input.float(0.40, "Min SL distance (ATR) - else NO TRADE / Hybrid floor", minval = 0.1, step = 0.05, group = G_SL, display = display.none)
+slMaxAtr  = input.float(2.00, "Max SL distance (ATR) - else NO TRADE / Hybrid cap", minval = 0.3, step = 0.1, group = G_SL, display = display.none)
+spreadEst      = input.float(0.25, "Typical spread (price units, 0.25 = 25 cents/oz)", minval = 0.0, step = 0.05, group = G_SL,
+     tooltip = "Used by the cost-aware filter below and by the strategy's exit model.", display = display.none)
+minRiskSpreadX = input.float(4.0, "Min SL distance as a multiple of the spread (0 = off)", minval = 0.0, step = 1.0, group = G_SL,
+     tooltip = "Skips trades whose risk is so small that the spread eats it: on 1m gold a 1.0 stop with a 0.25 spread pays 25% of R in costs before slippage. 6-8 is a sensible scalping floor.", display = display.none)
+
+tpMode         = input.string(TP_R, "Take Profit mode", options = [TP_R, TP_ATR, TP_MICRO], group = G_TP, display = display.none)
+tpR            = input.float(1.0, "Fixed R mode: TP (R)", minval = 0.1, step = 0.05, group = G_TP, display = display.none)
+tpAtr          = input.float(0.30, "ATR mode: TP (ATR)", minval = 0.05, step = 0.05, group = G_TP, display = display.none)
+tpStructBufAtr = input.float(0.05, "Micro-structure mode: stop short of support by (ATR)", minval = 0.0, step = 0.05, group = G_TP, display = display.none)
+tpMinR         = input.float(0.30, "Min reward (R) - else NO TRADE", minval = 0.05, step = 0.05, group = G_TP, display = display.none)
+roomFrac       = input.float(0.50, "Nearest support must be at least this fraction of TP away", minval = 0.0, maxval = 1.0, step = 0.05, group = G_TP, display = display.none)
+quickTpR       = input.float(0.30, "Quick TP level (R)", minval = 0.05, step = 0.05, group = G_TP, display = display.none)
+quickExitStall = input.bool(true, "Exit at close when a bullish bar prints after Quick TP", group = G_TP, display = display.none)
+
+useBe        = input.bool(true, "Move SL to break-even", group = G_BE, display = display.none)
+beOnQuick    = input.bool(true, "Break-even as soon as Quick TP is hit", group = G_BE,
+     tooltip = "The scalper's rule: once the trade has shown a quick profit, never let it turn into a loss. SL moves to entry from the next bar on.", display = display.none)
+beTriggerR   = input.float(0.50, "Break-even trigger (R) - also applies when the option above is off", minval = 0.05, step = 0.05, group = G_BE, display = display.none)
+useLock      = input.bool(true, "Lock profit", group = G_BE, display = display.none)
+lockTriggerR = input.float(0.80, "Lock trigger (R)", minval = 0.05, step = 0.05, group = G_BE, display = display.none)
+lockOffsetR  = input.float(0.20, "Lock SL at (R in profit)", minval = 0.0, step = 0.05, group = G_BE, display = display.none)
+
+maxBarsInTrade = input.int(20, "Time stop (bars, 0 = off)", minval = 0, maxval = 500, group = G_LIFE, display = display.none)
+cooldownBars   = input.int(2, "Cooldown after an exit (bars)", minval = 0, maxval = 100, group = G_LIFE, display = display.none)
+exitOnBosUp    = input.bool(true, "Exit when price closes above the last swing high (invalidation)", group = G_LIFE, display = display.none)
+
+VIEW_MIN    = "Minimal (recommended)"
+VIEW_CUSTOM = "Custom (use the toggles below)"
+viewMode    = input.string(VIEW_MIN, "Chart detail", options = [VIEW_MIN, VIEW_CUSTOM], group = G_VIEW,
+     tooltip = "Minimal: candles coloured by trend, background, a short SHORT label, SL / TP lines with price tags, one exit label with the P/L and a one-line status. Everything else stays hidden whatever the toggles below say.", display = display.none)
+minimalView = viewMode == VIEW_MIN
+showTable  = input.bool(false, "Show dashboard table (everything is also drawn on the chart)", group = G_VIEW, display = display.none)
+showLevels = input.bool(true, "Show support / resistance", group = G_VIEW, display = display.none)
+showEma    = input.bool(true, "Show EMA fast / mid / slow", group = G_VIEW, display = display.none)
+showSwings = input.bool(false, "Mark confirmed swing highs / lows", group = G_VIEW, display = display.none)
+showPre    = input.bool(true, "Mark PRE-SHORT bars (PB / BD / RJ / MC = setup arming)", group = G_VIEW, display = display.none)
+BG_OFF    = "Off"
+BG_WINDOW = "Trading window (green = OK to short, red = stay out)"
+BG_BIAS   = "Bias (red = SHORT BIAS, orange = WATCH)"
+bgMode     = input.string(BG_WINDOW, "Background", options = [BG_OFF, BG_WINDOW, BG_BIAS], group = G_VIEW,
+     tooltip = "Trading window: green while session, volatility, anti-chasing and bias all allow a short (wait for a signal); red while any of them says stay out.", display = display.none)
+
+// ---------- Phase 1/2/6/7: core series, structure, bias, volatility, session, anti-chase ----------
+barClosed = barstate.isconfirmed
+
+atr     = ta.atr(atrLen)
+emaFast = ta.ema(close, emaFastLen)
+emaMid  = ta.ema(close, emaMidLen)
+emaSlow = ta.ema(close, emaSlowLen)
+rsi     = ta.rsi(close, rsiLen)
+atrBase = ta.sma(atr, volBaseLen)
+warmedUp = not na(atr) and atr > 0 and not na(emaSlow) and not na(atrBase)
+
+// Higher-timeframe context from the LAST CLOSED higher-timeframe bar only.  The
+// [1] offset together with lookahead_on is TradingView's documented
+// non-repainting idiom: historical and realtime chart bars both see the same
+// closed higher-timeframe values (see pine/README.md of the advisory script).
+chartSecs = timeframe.in_seconds(timeframe.period)
+htfAuto   = chartSecs <= 180 ? "15" : chartSecs <= 900 ? "60" : chartSecs <= 3600 ? "240" : "1D"
+htfReq    = htfMode == HTF_AUTO ? htfAuto : htfFixed
+htfValid  = timeframe.in_seconds(htfReq) > chartSecs
+htfTf     = htfValid ? htfReq : timeframe.period
+htfEmaMid  = request.security(syminfo.tickerid, htfTf, ta.ema(close, emaMidLen)[1], lookahead = barmerge.lookahead_on)
+htfEmaSlow = request.security(syminfo.tickerid, htfTf, ta.ema(close, emaSlowLen)[1], lookahead = barmerge.lookahead_on)
+htfClose   = request.security(syminfo.tickerid, htfTf, close[1], lookahead = barmerge.lookahead_on)
+htfReady = htfValid and not na(htfEmaSlow) and not na(htfClose)
+htfBear  = htfReady and htfEmaMid < htfEmaSlow and htfClose < htfEmaMid
+htfBull  = htfReady and htfEmaMid > htfEmaSlow and htfClose > htfEmaMid
+htfOk    = not useHtf or (htfReady and not htfBull)     // fail closed: invalid / not-yet-loaded higher TF blocks shorts
+
+barRange   = high - low
+bodySize   = math.abs(close - open)
+upperWick  = high - math.max(open, close)
+closePos   = barRange > 0 ? (close - low) / barRange : 0.5   // 0 = closed on the low
+wickShare  = barRange > 0 ? upperWick / barRange : 0.0
+rangeAtr   = warmedUp ? barRange / atr : 0.0
+fastSlope  = warmedUp ? (emaFast - emaFast[slopeLen]) / atr : 0.0
+midSlope   = warmedUp ? (emaMid - emaMid[slopeLen]) / atr : 0.0
+momAtr     = warmedUp ? (close - close[slopeLen]) / atr : 0.0
+rsiFalling = rsi < rsi[1]
+bearBar    = close < open
+
+// Market structure: confirmed swings only.  ta.pivothigh/low return a value
+// swingLen bars AFTER the swing, once the bars on both sides have closed, so a
+// swing can appear late but can never move or disappear.
+ph = ta.pivothigh(high, swingLen, swingLen)
+pl = ta.pivotlow(low, swingLen, swingLen)
+var float sh1 = na
+var float sh2 = na
+var float sl1 = na
+var float sl2 = na
+var int   sh1Bar = na
+var int   sl1Bar = na
+var bool  brokeDown = false
+var bool  brokeUp   = false
+var bool  bdBroken  = false
+var int   structTrend = 0          // -1 bearish (LH+LL / bearish BOS), +1 bullish, 0 unclear
+newSwingHigh = not na(ph)
+newSwingLow  = not na(pl)
+if newSwingHigh
+    sh2 := sh1
+    sh1 := ph
+    sh1Bar := bar_index - swingLen
+    brokeUp := false
+if newSwingLow
+    sl2 := sl1
+    sl1 := pl
+    sl1Bar := bar_index - swingLen
+    brokeDown := false
+    bdBroken := false
+lowerHigh  = not na(sh2) and sh1 < sh2
+higherHigh = not na(sh2) and sh1 > sh2
+lowerLow   = not na(sl2) and sl1 < sl2
+higherLow  = not na(sl2) and sl1 > sl2
+// Break of structure = first bar CLOSE through a confirmed swing; once per swing.
+bosDown = barClosed and not brokeDown and not na(sl1) and close < sl1
+bosUp   = barClosed and not brokeUp and not na(sh1) and close > sh1
+if bosDown
+    brokeDown := true
+    structTrend := -1
+if bosUp
+    brokeUp := true
+    structTrend := 1
+if newSwingHigh or newSwingLow
+    if lowerHigh and lowerLow
+        structTrend := -1
+    else if higherHigh and higherLow
+        structTrend := 1
+sinceBosDown  = ta.barssince(bosDown)
+sinceBosUp    = ta.barssince(bosUp)
+recentBosDown = not na(sinceBosDown) and sinceBosDown <= bosMemory
+recentBosUp   = not na(sinceBosUp) and sinceBosUp <= bosMemory
+
+recentHigh = ta.highest(high, srLookback)[1]
+recentLow  = ta.lowest(low, srLookback)[1]
+resLevel   = na(sh1) ? recentHigh : sh1     // nearest confirmed resistance
+supLevel   = na(sl1) ? recentLow : sl1      // nearest confirmed support
+// Nearest support strictly below the current close (for TP room / micro-structure TP).
+float supBelow = na
+if not na(sl1) and sl1 < close
+    supBelow := sl1
+if not na(recentLow) and recentLow < close and (na(supBelow) or recentLow > supBelow)
+    supBelow := recentLow
+
+// Layer 1 -- short bias: 0 = NO SHORT, 1 = WATCH, 2 = SHORT BIAS
+emaStackBear  = emaFast < emaMid and emaMid < emaSlow
+priceBelowMid = close < emaMid
+midDown       = midSlope < 0
+biasPts = (emaStackBear ? 2 : emaFast < emaSlow ? 1 : 0) + (priceBelowMid ? 1 : 0) + (midDown ? 1 : 0) +
+     (structTrend == -1 ? 2 : 0) + (rsi < 50 ? 1 : 0) + (recentBosDown ? 1 : 0) + (useHtf and htfBear ? 1 : 0)      // max 9
+biasLevel = not warmedUp or not htfOk ? 0 : (recentBosUp and structTrend == 1) ? 0 : biasPts >= 5 ? 2 : biasPts >= 3 ? 1 : 0
+
+// Volatility regime: 0 LOW, 1 NORMAL, 2 HIGH, 3 EXTREME
+volRatio = warmedUp ? atr / atrBase : na
+volState = na(volRatio) ? 1 : volRatio < volLow ? 0 : volRatio > volExtreme ? 3 : volRatio > volHigh ? 2 : 1
+
+// Session: 0 OFF, 1 ASIAN, 2 LONDON, 3 NEW YORK, 4 LONDON/NY OVERLAP
+inAsia = not na(time(timeframe.period, sessAsia, sessTz))
+inLon  = not na(time(timeframe.period, sessLondon, sessTz))
+inNy   = not na(time(timeframe.period, sessNy, sessTz))
+sessionIdx = (inLon and inNy) ? 4 : inLon ? 2 : inNy ? 3 : inAsia ? 1 : 0
+sessionAllowed = sessionIdx == 4 ? (allowLondon or allowNy) : sessionIdx == 2 ? allowLondon :
+     sessionIdx == 3 ? allowNy : sessionIdx == 1 ? allowAsia : allowOff
+sessionScore = sessionIdx == 4 ? scSessOverlap : sessionIdx == 2 ? scSessLondon :
+     sessionIdx == 3 ? scSessNy : sessionIdx == 1 ? scSessAsia : scSessOff
+
+// Anti-chasing: the trade wants profit in a few bars, so never sell into an
+// already-extended drop, a climactic bar, or an ATR blow-off.
+dropAtr    = warmedUp ? (ta.highest(high, chaseBars) - close) / atr : 0.0
+atrExp     = warmedUp and atr[chaseBars] > 0 ? atr / atr[chaseBars] : 1.0
+distMidAtr = warmedUp ? (emaMid - close) / atr : 0.0
+chaseDrop  = dropAtr > chaseMaxDropAtr
+chaseBar   = bearBar and rangeAtr > chaseMaxBarAtr
+chaseDist  = distMidAtr > chaseMaxDistAtr
+chaseExp   = atrExp > chaseAtrExp
+chasing    = chaseDrop or chaseBar or chaseDist or chaseExp
+
+// ---------- Layer 2 (Phases 3/4/5): setup detection ----------
+// Each setup has: ARMED (pre-conditions met, waiting for the trigger -> PRE-SHORT),
+// TRIG (armed + bearish confirmation on a closed bar), a confirmation score (0-15),
+// the structure high the Stop Loss goes above, and a location-quality flag.
+
+// A · Pullback short: bearish trend, price lifts into the EMA fast/mid zone,
+// then a bearish bar closes back under EMA fast (break of prior low or strong close).
+pbTrend   = warmedUp and emaFast < emaSlow and structTrend != 1
+pbHigh    = ta.highest(high, pbLookback)
+pbZone    = high >= emaFast and high <= emaSlow + 0.3 * atr
+pbArmed   = enPullback and pbTrend and biasLevel >= 1 and pbZone and close >= emaFast
+pbConfirm = close < low[1] or closePos <= 0.30 or (bearBar and upperWick >= bodySize)
+pbTrig    = enPullback and pbTrend and biasLevel >= 1 and (pbZone or pbZone[1] or pbZone[2]) and
+     pbHigh <= emaSlow + 0.3 * atr and close < emaFast and bearBar and rsiFalling and pbConfirm
+pbConf    = close < low[1] and closePos <= 0.30 ? 15 : close < low[1] ? 11 : 8
+pbSlHigh  = pbHigh
+pbLocOk   = pbHigh >= emaMid - 0.1 * atr
+
+// B · Breakdown short: a confirmed swing low is tested, then a bar CLOSES below
+// it by a buffer with a strong close (a wick through the level never counts).
+bdBuf        = bdBreakBufAtr * atr
+bdBelowNow   = not na(sl1) and close < sl1 - bdBuf
+bdBreakEvent = warmedUp and not bdBroken and bdBelowNow
+bdStrong     = closePos <= 0.35 and rangeAtr >= 0.7
+bdArmed      = enBreakdown and not na(sl1) and not bdBroken and low <= sl1 + 0.3 * atr and close >= sl1 - bdBuf
+bdTrig       = enBreakdown and (bdConfirmBars == 1 ? (bdBreakEvent and bdStrong and bearBar) :
+     (bdBreakEvent[1] and sl1 == sl1[1] and bdBelowNow and bearBar))
+bdConf       = bdConfirmBars == 2 ? (bdStrong ? 15 : 12) : (closePos <= 0.20 and rangeAtr >= 1.0 ? 15 : 10)
+bdSlHigh     = math.max(sl1, ta.highest(high, 3))
+bdLocOk      = bdStrong
+if bdBreakEvent and barClosed
+    bdBroken := true
+
+// C · Rejection short: a fast spike into resistance that closes with a long
+// upper wick (or the next bar closes below the rejection bar's low).
+spikeUp    = warmedUp and ((high - math.min(open, close[1])) / atr >= rjSpikeAtr or (high - ta.lowest(low, 3)) / atr >= rjSpikeAtr)
+touchedRes = high >= resLevel - 0.15 * atr or (close < emaSlow and high >= emaSlow - 0.1 * atr) or high >= recentHigh - 0.1 * atr
+rjBar      = spikeUp and touchedRes and wickShare >= rjWickPct and closePos <= 0.40
+rjBiasOk   = not rjRequireBias or biasLevel >= 1
+rjArmed    = enRejection and rjBiasOk and spikeUp and touchedRes and not rjBar
+rjTrigA    = rjBar and bearBar and rsiFalling
+rjTrigB    = rjBar[1] and close < low[1] and bearBar
+rjTrig     = enRejection and rjBiasOk and (rjTrigA or rjTrigB)
+rjConf     = rjTrigA and wickShare >= 0.6 ? 15 : rjTrigB ? 12 : 10
+rjSlHigh   = rjTrigA ? high : high[1]
+rjLocOk    = rjSlHigh >= resLevel - 0.15 * atr
+
+// D · Momentum continuation short: strong down-slope, a tight consolidation
+// under EMA mid, then a close below the consolidation low -- but not after an
+// already-extended drop.
+mcTrend   = warmedUp and biasLevel == 2 and fastSlope <= -mcSlopeAtr and rsi < 45
+consHigh  = ta.highest(high, mcConsBars)[1]
+consLow   = ta.lowest(low, mcConsBars)[1]
+consTight = warmedUp and (consHigh - consLow) / atr <= mcConsRangeAtr and consHigh <= emaMid + 0.2 * atr
+mcDrop    = warmedUp ? (ta.highest(high, 20) - close) / atr : 0.0
+mcArmed   = enMomentum and mcTrend and consTight and close >= consLow
+mcTrig    = enMomentum and mcTrend and consTight and close < consLow and bearBar and mcDrop <= mcMaxDropAtr
+mcConf    = closePos <= 0.30 and close < consLow - 0.1 * atr ? 15 : 10
+mcSlHigh  = consHigh
+mcLocOk   = consHigh <= emaFast + 0.1 * atr
+
+// Best confirmation wins; ties go Breakdown > Momentum > Pullback > Rejection.
+// setupIdx: 0 none, 1 PULLBACK, 2 BREAKDOWN, 3 REJECTION, 4 MOMENTUM
+int   setupIdx    = 0
+int   confScore   = 0
+float setupSlHigh = na
+bool  locOk       = false
+if bdTrig
+    setupIdx := 2
+    confScore := bdConf
+    setupSlHigh := bdSlHigh
+    locOk := bdLocOk
+if mcTrig and mcConf > confScore
+    setupIdx := 4
+    confScore := mcConf
+    setupSlHigh := mcSlHigh
+    locOk := mcLocOk
+if pbTrig and pbConf > confScore
+    setupIdx := 1
+    confScore := pbConf
+    setupSlHigh := pbSlHigh
+    locOk := pbLocOk
+if rjTrig and rjConf > confScore
+    setupIdx := 3
+    confScore := rjConf
+    setupSlHigh := rjSlHigh
+    locOk := rjLocOk
+anyArmed = pbArmed or bdArmed or rjArmed or mcArmed
+
+// ---------- Score (Layer 3) ----------
+trendScore  = (emaStackBear ? 10 : emaFast < emaSlow ? 6 : 0) + (midDown ? 5 : 0) + (priceBelowMid ? 5 : 0)   // /20
+structScore = (structTrend == -1 ? 10 : structTrend == 0 ? 4 : 0) + ((recentBosDown or lowerHigh) ? 5 : 0) + (locOk ? 5 : 0)   // /20
+momScore    = (rsi < 50 ? 5 : 0) + (rsiFalling ? 5 : 0) + (closePos <= 0.30 ? 5 : 0) + (momAtr < 0 ? 5 : 0)   // /20
+volScore    = volState == 1 ? 10 : volState == 2 ? 5 : volState == 0 ? 3 : 0   // /10
+
+// ---------- Phase 9: Stop Loss / Take Profit / Quick TP for the candidate ----------
+// Reference entry = the signal bar's close.  The strategy fills at the next
+// bar's open; levels stay anchored to the reference so both front ends agree.
+entryRef  = close
+structSl  = setupSlHigh + slBufAtr * atr
+atrSl     = entryRef + slAtrMult * atr
+hybridSl  = math.min(math.max(structSl, entryRef + slMinAtr * atr), entryRef + slMaxAtr * atr)
+slLevel   = slMode == SL_STRUCT ? structSl : slMode == SL_ATR ? atrSl : hybridSl
+slDistAtr = warmedUp ? (slLevel - entryRef) / atr : na
+slOk      = not na(slDistAtr) and slDistAtr >= slMinAtr and slDistAtr <= slMaxAtr
+riskR     = slLevel - entryRef
+tpFixed   = entryRef - tpR * riskR
+tpAtrLvl  = entryRef - tpAtr * atr
+tpMicro   = na(supBelow) ? tpAtrLvl : supBelow + tpStructBufAtr * atr
+tpLevel   = tpMode == TP_R ? tpFixed : tpMode == TP_ATR ? tpAtrLvl : tpMicro
+tpDist    = entryRef - tpLevel
+rewardR   = riskR > 0 ? tpDist / riskR : 0.0
+rewardOk  = tpDist > 0 and rewardR >= tpMinR
+roomOk    = tpMode == TP_MICRO or na(supBelow) or (entryRef - supBelow) >= roomFrac * tpDist
+quickTpLevel = entryRef - quickTpR * riskR
+entryQuality = (not slOk ? 0 : slDistAtr <= 1.0 ? 3 : slDistAtr <= 1.5 ? 2 : 0) +
+     (roomOk and (na(supBelow) or entryRef - supBelow >= tpDist) ? 2 : 0)   // /5
+
+// ---------- Trade quality filter + final signal ----------
+setupFound = setupIdx > 0
+score      = setupFound ? trendScore + structScore + momScore + confScore + volScore + sessionScore + entryQuality : 0
+gateSession = sessionAllowed
+gateHtf     = htfOk
+gateVol     = volState == 1 or (volState == 2 and score >= thStrong) or (volState == 0 and allowLowVol) or
+     (volState == 3 and setupIdx == 2 and confScore >= 15)
+gateChase   = not chasing
+costOk      = minRiskSpreadX == 0 or riskR >= minRiskSpreadX * spreadEst
+gateRisk    = slOk and rewardOk and roomOk and costOk
+gateScore   = score >= thGood or (allowWeak and score >= thWeak)
+gatesPass   = gateSession and gateHtf and gateVol and gateChase and gateRisk and gateScore
+// Raw signal before lifecycle rules (cooldown / one trade at a time), which each front end applies.
+shortRaw  = barClosed and warmedUp and setupFound and gatesPass
+strongRaw = shortRaw and score >= thStrong
+
+volName(int v) => v == 0 ? "LOW" : v == 1 ? "NORMAL" : v == 2 ? "HIGH" : "EXTREME"
+setupName(int s) => s == 1 ? "PULLBACK" : s == 2 ? "BREAKDOWN" : s == 3 ? "REJECTION" : s == 4 ? "MOMENTUM" : "-"
+sessionName(int s) => s == 1 ? "ASIAN" : s == 2 ? "LONDON" : s == 3 ? "NEW YORK" : s == 4 ? "LDN/NY OVERLAP" : "OFF"
+biasName(int b) => b == 2 ? "SHORT BIAS" : b == 1 ? "WATCH" : "NO SHORT"
+qualityName(int s) => s >= thStrong ? "HIGH" : s >= thGood ? "GOOD" : s >= thWeak ? "WEAK" : "NONE"
+momName = momScore >= 15 ? "STRONG" : momScore >= 10 ? "MODERATE" : "WEAK"
+blockReason = not setupFound ? "" :
+     not gateSession ? "session not allowed" :
+     not gateHtf ? (htfReady ? "higher TF bullish" : "higher TF invalid / loading") :
+     not gateChase ? (chaseDrop ? "chasing: drop too far" : chaseBar ? "chasing: climactic bar" :
+     chaseDist ? "chasing: far below EMA mid" : "chasing: ATR blow-off") :
+     not gateVol ? "volatility " + volName(volState) :
+     not slOk ? "SL distance out of range" :
+     not costOk ? "risk too small vs spread" :
+     not rewardOk ? "reward below min R" :
+     not roomOk ? "support too close" :
+     not gateScore ? "score below threshold" : ""
+
+// Break-even / lock: SL only ever moves DOWN, and only from the next bar on
+// (the bar that reached the trigger is never allowed to benefit from it).
+f_managedSl(float entry, float slInit, float r, float mfeR) =>
+    float s = slInit
+    if useLock and mfeR >= lockTriggerR
+        s := math.min(s, entry - lockOffsetR * r)
+    else if useBe and (mfeR >= beTriggerR or (beOnQuick and mfeR >= quickTpR))
+        s := math.min(s, entry)
+    s
+
+// Environment gate for the background: everything except the setup itself.
+volOpen    = volState == 1 or volState == 2 or (volState == 0 and allowLowVol)
+windowOpen = warmedUp and sessionAllowed and volOpen and not chasing and biasLevel >= 1
+
+tfLabel() =>
+    int secs = timeframe.in_seconds(timeframe.period)
+    secs < 60 ? str.tostring(secs) + "s" : secs < 86400 and secs % 3600 == 0 ? str.tostring(secs / 3600) + "H" :
+         secs < 86400 ? str.tostring(secs / 60) + "m" : timeframe.period
+
+// ---------- Shared chart layer (kept minimal on purpose) ----------
+// display.pane keeps the EMA / level values out of the status line and the price scale.
+fEma    = showEma and not minimalView
+fLevels = showLevels and not minimalView
+fSwings = showSwings and not minimalView
+plot(fEma ? emaFast : na, "EMA fast", color = color.new(color.orange, 30), linewidth = 1, display = display.pane)
+plot(fEma ? emaMid : na, "EMA mid", color = color.new(color.red, 30), linewidth = 1, display = display.pane)
+plot(fEma ? emaSlow : na, "EMA slow", color = color.new(color.gray, 30), linewidth = 1, display = display.pane)
+plot(fLevels ? sh1 : na, "Resistance (swing high)", color = color.new(color.red, 55), style = plot.style_stepline, linewidth = 1, display = display.pane)
+plot(fLevels ? sl1 : na, "Support (swing low)", color = color.new(color.teal, 55), style = plot.style_stepline, linewidth = 1, display = display.pane)
+plotshape(fSwings and newSwingHigh, "Swing high", style = shape.triangledown, location = location.abovebar,
+     color = color.new(color.red, 40), size = size.tiny, offset = -swingLen, display = display.pane)
+plotshape(fSwings and newSwingLow, "Swing low", style = shape.triangleup, location = location.belowbar,
+     color = color.new(color.teal, 40), size = size.tiny, offset = -swingLen, display = display.pane)
+preMark = showPre and not minimalView and barClosed and warmedUp and not shortRaw
+plotshape(preMark and pbArmed, "PRE-SHORT pullback", style = shape.circle, location = location.abovebar,
+     color = color.new(color.gray, 60), size = size.tiny, text = "PB", textcolor = color.new(color.gray, 20), display = display.pane)
+plotshape(preMark and bdArmed and not pbArmed, "PRE-SHORT breakdown", style = shape.circle, location = location.abovebar,
+     color = color.new(color.gray, 60), size = size.tiny, text = "BD", textcolor = color.new(color.gray, 20), display = display.pane)
+plotshape(preMark and rjArmed and not pbArmed and not bdArmed, "PRE-SHORT rejection", style = shape.circle, location = location.abovebar,
+     color = color.new(color.gray, 60), size = size.tiny, text = "RJ", textcolor = color.new(color.gray, 20), display = display.pane)
+plotshape(preMark and mcArmed and not pbArmed and not bdArmed and not rjArmed, "PRE-SHORT momentum", style = shape.circle, location = location.abovebar,
+     color = color.new(color.gray, 60), size = size.tiny, text = "MC", textcolor = color.new(color.gray, 20), display = display.pane)
+bgcolor(not warmedUp ? na :
+     bgMode == BG_WINDOW ? (windowOpen ? color.new(color.green, 88) : color.new(color.red, 90)) :
+     bgMode == BG_BIAS ? (biasLevel == 2 ? color.new(color.red, 94) : biasLevel == 1 ? color.new(color.orange, 96) : na) : na,
+     title = "Background")
+// ===================== CORE END =====================
+
+// ===================== STRATEGY FRONT END =====================
+// Fills: a signal on the CLOSE of bar N becomes a market order that fills at
+// the OPEN of bar N+1 (execution delay, no same-bar fills).  Exits are stop /
+// limit orders handled by TradingView's broker emulator, shifted by the spread
+// so a short's buy-to-cover triggers where the ASK would be.  Slippage and the
+// commission that pays the spread live in strategy() / Properties.
+G_BT    = "13 · Backtest window"
+G_EXEC  = "14 · Execution model"
+G_ALERT = "15 · Alerts"
+W_ALL   = "All loaded bars"
+W_TRAIN = "Train (first share)"
+W_VAL   = "Validation (next share)"
+W_OOS   = "Out-of-sample (last share)"
+W_DATES = "Custom dates"
+
+winMode  = input.string(W_ALL, "Trade only inside window", options = [W_ALL, W_TRAIN, W_VAL, W_OOS, W_DATES], group = G_BT,
+     tooltip = "Train/Validation/OOS split the bars currently loaded on the chart by percentage (the split point moves as new bars arrive; use Custom dates for a frozen report).", display = display.none)
+trainPct = input.int(60, "Train share of loaded bars (%)", minval = 10, maxval = 90, group = G_BT, display = display.none)
+valPct   = input.int(20, "Validation share (%)", minval = 5, maxval = 50, group = G_BT, display = display.none)
+winStart = input.time(timestamp("2025-01-01T00:00:00+00:00"), "Custom: start", group = G_BT, display = display.none)
+winEnd   = input.time(timestamp("2030-01-01T00:00:00+00:00"), "Custom: end", group = G_BT, display = display.none)
+
+// The spread itself is the shared "Typical spread" input of group 8 (spreadEst): exit
+// triggers are shifted by it so a buy-to-cover fires where the ask would be, and
+// Properties > Commission should be spread/2 per contract (entry + exit) so the P&L pays it.
+spread     = spreadEst
+chartIsMid = input.bool(false, "Chart price is MID (Pyth / oracle feeds)", group = G_EXEC,
+     tooltip = "On a mid-price chart the ask is only half a spread above; exits are shifted by spread/2 and you should add spread/2 (in ticks) to Properties > Slippage for the entry.", display = display.none)
+partialOn  = input.bool(false, "Partial exit at Quick TP", group = G_EXEC, display = display.none)
+partialPct = input.int(50, "Partial size at Quick TP (% of position)", minval = 1, maxval = 99, group = G_EXEC, display = display.none)
+showPerf   = input.bool(true, "Show performance tables", group = G_EXEC, display = display.none)
+alertSetup = input.bool(false, "Include PRE-SHORT (setup armed) in the alert() stream", group = G_ALERT, display = display.none)
+
+exitShift = chartIsMid ? spread / 2 : spread
+trainEndIdx = math.round(last_bar_index * trainPct / 100.0)
+valEndIdx   = math.round(last_bar_index * (trainPct + valPct) / 100.0)
+inWindow = winMode == W_ALL ? true :
+     winMode == W_TRAIN ? bar_index <= trainEndIdx :
+     winMode == W_VAL ? (bar_index > trainEndIdx and bar_index <= valEndIdx) :
+     winMode == W_OOS ? bar_index > valEndIdx :
+     (time >= winStart and time <= winEnd)
+
+var float tEntry     = na      // actual fill (strategy.position_avg_price)
+var float tSlInit    = na
+var float tSl        = na
+var float tTp        = na
+var float tQtp       = na
+var float tR         = na
+var int   tBar       = na      // signal bar
+var int   tSetup     = 0
+var int   tScore     = 0
+var int   tSession   = 0
+var bool  tQuickHit  = false
+var bool  tFilled    = false
+var float tLowest    = na
+var int   lastExitBar = na
+var string lastOutcome = "-"
+
+bool   evEntry  = false
+bool   evStrong = false
+bool   evQuick  = false
+bool   evBe     = false
+bool   evLock   = false
+bool   evClosed = false
+string exitWhy  = ""
+
+inPos = strategy.position_size < 0
+cooldownOk = na(lastExitBar) or bar_index - lastExitBar > cooldownBars
+
+// ---------- Trade records for the metrics (grouped per position) ----------
+var array<float> posProfit  = array.new<float>()
+var array<float> posR       = array.new<float>()
+var array<int>   posBars    = array.new<int>()
+var array<int>   posSetup   = array.new<int>()
+var array<int>   posSession = array.new<int>()
+var array<int>   posEntryBar = array.new<int>()
+var array<int>   sessCount  = array.new<int>(5, 0)       // session instances seen, by sessionIdx
+var int prevClosed = 0
+if sessionIdx != sessionIdx[1]
+    array.set(sessCount, sessionIdx, array.get(sessCount, sessionIdx) + 1)
+if strategy.closedtrades > prevClosed
+    for i = prevClosed to strategy.closedtrades - 1
+        float pr = strategy.closedtrades.profit(i)
+        int   eb = strategy.closedtrades.entry_bar_index(i)
+        int   xb = strategy.closedtrades.exit_bar_index(i)
+        float qty = math.abs(strategy.closedtrades.size(i))
+        float rMult = tR > 0 and qty > 0 ? pr / (tR * qty * syminfo.pointvalue) : 0.0
+        int n = array.size(posEntryBar)
+        if n > 0 and array.get(posEntryBar, n - 1) == eb
+            array.set(posProfit, n - 1, array.get(posProfit, n - 1) + pr)
+            array.set(posR, n - 1, array.get(posR, n - 1) + rMult)
+            array.set(posBars, n - 1, math.max(array.get(posBars, n - 1), xb - eb))
+        else
+            array.push(posProfit, pr)
+            array.push(posR, rMult)
+            array.push(posBars, xb - eb)
+            array.push(posSetup, tSetup)
+            array.push(posSession, tSession)
+            array.push(posEntryBar, eb)
+        exitWhy := strategy.closedtrades.exit_comment(i)
+    evClosed := true
+    prevClosed := strategy.closedtrades
+    if not inPos
+        lastOutcome := exitWhy
+        lastExitBar := bar_index
+        tFilled := false
+
+// ---------- Manage the open position ----------
+if inPos
+    if not tFilled
+        tFilled := true
+        tEntry  := strategy.position_avg_price
+        tR      := tSlInit - tEntry
+        tLowest := low
+    tLowest := math.min(tLowest, low)
+    if low <= tQtp and not tQuickHit
+        tQuickHit := true
+        evQuick := true
+    if quickExitStall and tQuickHit and close > open and close < tEntry
+        strategy.close("S", comment = "QUICK EXIT")
+    else if maxBarsInTrade > 0 and bar_index - tBar - 1 >= maxBarsInTrade
+        strategy.close("S", comment = "TIME STOP")
+    else if exitOnBosUp and bosUp
+        strategy.close("S", comment = "INVALIDATED")
+    float mfeR  = tR > 0 ? (tEntry - tLowest) / tR : 0.0
+    float newSl = f_managedSl(tEntry, tSlInit, tR, mfeR)
+    if newSl < tSl
+        if newSl < tEntry
+            evLock := true
+        else
+            evBe := true
+        tSl := newSl
+    strategy.exit("X", "S", stop = tSl - exitShift, limit = tTp - exitShift, comment_profit = "TP", comment_loss = tSl < tEntry ? "LOCKED" : tSl == tEntry ? "BREAK-EVEN" : "SL")
+    if partialOn
+        strategy.exit("Q", "S", limit = tQtp - exitShift, qty_percent = partialPct, comment = "QUICK TP")
+
+// ---------- New signal -> market order for the next bar's open ----------
+if not inPos and strategy.opentrades == 0 and shortRaw and cooldownOk and inWindow
+    tSlInit   := slLevel
+    tSl       := slLevel
+    tTp       := tpLevel
+    tQtp      := quickTpLevel
+    tR        := riskR
+    tBar      := bar_index
+    tSetup    := setupIdx
+    tScore    := score
+    tSession  := sessionIdx
+    tQuickHit := false
+    tFilled   := false
+    evEntry   := true
+    evStrong  := strongRaw
+    strategy.entry("S", strategy.short, comment = setupName(setupIdx) + " " + str.tostring(score))
+    strategy.exit("X", "S", stop = slLevel - exitShift, limit = tpLevel - exitShift, comment_profit = "TP", comment_loss = "SL")
+    if partialOn
+        strategy.exit("Q", "S", limit = quickTpLevel - exitShift, qty_percent = partialPct, comment = "QUICK TP")
+    label.new(bar_index, high, (strongRaw ? "STRONG SHORT " : "SHORT ") + str.tostring(score) + "\n" + setupName(setupIdx) +
+         "\nSL " + str.tostring(slLevel, format.mintick) + "\nTP " + str.tostring(tpLevel, format.mintick),
+         style = label.style_label_down, color = color.new(strongRaw ? color.red : color.maroon, 10), textcolor = color.white, size = size.small)
+
+plot(score, "Score", display = display.none)
+plot((inPos or evEntry) ? (tFilled ? tEntry : entryRef) : na, "Entry", display = display.none)
+plot((inPos or evEntry) ? tSl : na, "SL", display = display.none)
+plot((inPos or evEntry) ? tTp : na, "TP", display = display.none)
+plot((inPos or evEntry) ? tQtp : na, "Quick TP", display = display.none)
+plot(tSetup, "Setup code", display = display.none)
+
+alertPrefix() => syminfo.ticker + " " + tfLabel() + " | "
+if barstate.isconfirmed
+    if evEntry
+        alert(alertPrefix() + (evStrong ? "STRONG SHORT | " : "SHORT | ") + "score " + str.tostring(tScore) + " | ref entry " + str.tostring(entryRef, format.mintick) +
+             " | SL " + str.tostring(tSl, format.mintick) + " | TP " + str.tostring(tTp, format.mintick) + " | quick " + str.tostring(tQtp, format.mintick) +
+             " | setup " + setupName(tSetup) + " | fills next open", alert.freq_once_per_bar_close)
+    if evQuick
+        alert(alertPrefix() + "QUICK TP reached | close " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+    if evBe or evLock
+        alert(alertPrefix() + (evLock ? "LOCK PROFIT" : "BREAK-EVEN") + " | SL now " + str.tostring(tSl, format.mintick), alert.freq_once_per_bar_close)
+    if evClosed
+        alert(alertPrefix() + "EXIT " + exitWhy + " | close " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+    if alertSetup and anyArmed and not shortRaw and not inPos
+        alert(alertPrefix() + "PRE-SHORT setup armed | bias " + biasName(biasLevel), alert.freq_once_per_bar_close)
+alertcondition(evEntry, "Short Entry", 'SHORT {{ticker}} {{interval}} | score {{plot("Score")}} | SL {{plot("SL")}} | TP {{plot("TP")}} | setup code {{plot("Setup code")}}')
+alertcondition(evStrong, "Strong Short", 'STRONG SHORT {{ticker}} {{interval}} | score {{plot("Score")}} | SL {{plot("SL")}} | TP {{plot("TP")}} | setup code {{plot("Setup code")}}')
+alertcondition(evQuick, "Quick TP", 'QUICK TP {{ticker}} {{interval}} | close {{close}}')
+alertcondition(evBe or evLock, "Break-even / Lock", 'BREAK-EVEN/LOCK {{ticker}} {{interval}} | SL now {{plot("SL")}}')
+alertcondition(evClosed, "Position closed", 'CLOSED {{ticker}} {{interval}} | close {{close}}')
+
+// ---------- Metrics helpers ----------
+bucketStats(int kind, int idx) =>
+    // kind 1 = session, 2 = setup.  Returns [n, wins, net, grossWin, grossLoss, sumR]
+    int n = 0
+    int w = 0
+    float net = 0.0
+    float gw = 0.0
+    float gl = 0.0
+    float sr = 0.0
+    if array.size(posProfit) > 0
+        for i = 0 to array.size(posProfit) - 1
+            int key = kind == 1 ? array.get(posSession, i) : array.get(posSetup, i)
+            if key == idx
+                float p = array.get(posProfit, i)
+                n += 1
+                w += p > 0 ? 1 : 0
+                net += p
+                gw += p > 0 ? p : 0.0
+                gl += p < 0 ? -p : 0.0
+                sr += array.get(posR, i)
+    [n, w, net, gw, gl, sr]
+
+fmtPct(int a, int b) => b > 0 ? str.tostring(100.0 * a / b, "#.#") + "%" : "-"
+fmtPf(float gw, float gl) => gl > 0 ? str.tostring(gw / gl, "#.##") : gw > 0 ? "inf" : "-"
+fmtR(float sr, int n) => n > 0 ? str.tostring(sr / n, "#.##") + "R" : "-"
+
+// ---------- Dashboard + performance tables (last bar only) ----------
+var table dash = table.new(position.top_right, 2, 12, border_width = 1, bgcolor = color.new(color.black, 70))
+var table perf = table.new(position.bottom_right, 2, 16, border_width = 1, bgcolor = color.new(color.black, 70))
+var table buck = table.new(position.bottom_left, 7, 11, border_width = 1, bgcolor = color.new(color.black, 70))
+winText = winMode == W_ALL ? "all bars" : winMode == W_DATES ? "custom dates" :
+     winMode + " · split @ bar " + str.tostring(trainEndIdx) + " / " + str.tostring(valEndIdx) + " of " + str.tostring(last_bar_index)
+if showTable and barstate.islast
+    string stateText = inPos ? (tQuickHit ? "QUICK PROFIT" : "SHORT (open)") : shortRaw ? "SHORT" : anyArmed ? "PRE-SHORT" : biasLevel >= 1 ? "WATCH" : "NO SHORT"
+    table.cell(dash, 0, 0, syminfo.ticker, text_color = color.white)
+    table.cell(dash, 1, 0, "TF " + tfLabel() + " · STRATEGY", text_color = color.white)
+    table.cell(dash, 0, 1, "State", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(dash, 1, 1, stateText, text_color = (inPos or shortRaw) ? color.red : color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(dash, 0, 2, "Bias", text_color = color.white)
+    table.cell(dash, 1, 2, biasName(biasLevel), text_color = biasLevel == 2 ? color.red : biasLevel == 1 ? color.yellow : color.gray)
+    table.cell(dash, 0, 3, "Setup", text_color = color.white)
+    table.cell(dash, 1, 3, inPos ? setupName(tSetup) + " (open)" : setupName(setupIdx), text_color = color.white)
+    table.cell(dash, 0, 4, "Momentum", text_color = color.white)
+    table.cell(dash, 1, 4, momName, text_color = color.white)
+    table.cell(dash, 0, 5, "Volatility", text_color = color.white)
+    table.cell(dash, 1, 5, volName(volState), text_color = volState == 1 ? color.lime : color.white)
+    table.cell(dash, 0, 6, "Session", text_color = color.white)
+    table.cell(dash, 1, 6, sessionName(sessionIdx) + " · quality " + str.tostring(sessionScore) + "/10", text_color = sessionAllowed ? color.white : color.orange)
+    table.cell(dash, 0, 7, "Score", text_color = color.white)
+    table.cell(dash, 1, 7, str.tostring(inPos ? tScore : score) + "/100 · " + qualityName(inPos ? tScore : score), text_color = color.white)
+    table.cell(dash, 0, 8, "Entry / SL / TP", text_color = color.white)
+    table.cell(dash, 1, 8, inPos ? str.tostring(tEntry, format.mintick) + " / " + str.tostring(tSl, format.mintick) + " / " + str.tostring(tTp, format.mintick) : "-", text_color = color.white)
+    table.cell(dash, 0, 9, "Filter", text_color = color.white)
+    table.cell(dash, 1, 9, inPos ? "in trade" : not inWindow ? "outside window" : not cooldownOk ? "cooldown" : blockReason != "" ? blockReason : "-", text_color = color.white)
+    table.cell(dash, 0, 10, "Window", text_color = color.white)
+    table.cell(dash, 1, 10, winText, text_color = color.white)
+    table.cell(dash, 0, 11, "Costs", text_color = color.white)
+    table.cell(dash, 1, 11, "spread " + str.tostring(spread) + (chartIsMid ? " (mid chart)" : "") + " · exits shifted " + str.tostring(exitShift), text_color = color.white)
+
+if showPerf and barstate.islast
+    int   n = array.size(posProfit)
+    int   wins = 0
+    float gw = 0.0
+    float gl = 0.0
+    float sumR = 0.0
+    int   streak = 0
+    int   worstStreak = 0
+    if n > 0
+        for i = 0 to n - 1
+            float p = array.get(posProfit, i)
+            sumR += array.get(posR, i)
+            if p > 0
+                wins += 1
+                gw += p
+                streak := 0
+            else
+                gl += -p
+                streak += 1
+                worstStreak := math.max(worstStreak, streak)
+    int losses = n - wins
+    float medianProfit = n > 0 ? array.median(posProfit) : na
+    float medianR = n > 0 ? array.median(posR) : na
+    float medianBars = n > 0 ? array.median(posBars) : na
+    float barMinutes = timeframe.in_seconds(timeframe.period) / 60.0
+    int sessionInstances = array.get(sessCount, 1) + array.get(sessCount, 2) + array.get(sessCount, 3) + array.get(sessCount, 4)
+    table.cell(perf, 0, 0, "Backtest (" + winText + ")", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(perf, 1, 0, str.tostring(n) + " positions / " + str.tostring(strategy.closedtrades) + " legs", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(perf, 0, 1, "Win rate", text_color = color.white)
+    table.cell(perf, 1, 1, fmtPct(wins, n), text_color = color.white)
+    table.cell(perf, 0, 2, "Profit factor", text_color = color.white)
+    table.cell(perf, 1, 2, fmtPf(gw, gl), text_color = color.white)
+    table.cell(perf, 0, 3, "Expectancy / trade", text_color = color.white)
+    table.cell(perf, 1, 3, n > 0 ? str.tostring((gw - gl) / n, "#.##") + " · " + fmtR(sumR, n) : "-", text_color = color.white)
+    table.cell(perf, 0, 4, "MEDIAN profit / trade", text_color = color.white)
+    table.cell(perf, 1, 4, n > 0 ? str.tostring(medianProfit, "#.##") + " · " + str.tostring(medianR, "#.##") + "R" : "-", text_color = color.lime)
+    table.cell(perf, 0, 5, "Net profit", text_color = color.white)
+    table.cell(perf, 1, 5, str.tostring(strategy.netprofit, "#.##"), text_color = strategy.netprofit >= 0 ? color.lime : color.red)
+    table.cell(perf, 0, 6, "Max drawdown", text_color = color.white)
+    table.cell(perf, 1, 6, str.tostring(strategy.max_drawdown, "#.##"), text_color = color.white)
+    table.cell(perf, 0, 7, "Avg win / avg loss", text_color = color.white)
+    table.cell(perf, 1, 7, (wins > 0 ? str.tostring(gw / wins, "#.##") : "-") + " / " + (losses > 0 ? str.tostring(-gl / losses, "#.##") : "-"), text_color = color.white)
+    table.cell(perf, 0, 8, "Avg R", text_color = color.white)
+    table.cell(perf, 1, 8, fmtR(sumR, n), text_color = color.white)
+    table.cell(perf, 0, 9, "Median duration", text_color = color.white)
+    table.cell(perf, 1, 9, n > 0 ? str.tostring(medianBars, "#.#") + " bars ≈ " + str.tostring(medianBars * barMinutes, "#") + " min" : "-", text_color = color.white)
+    table.cell(perf, 0, 10, "Longest losing streak", text_color = color.white)
+    table.cell(perf, 1, 10, str.tostring(worstStreak), text_color = color.white)
+    table.cell(perf, 0, 11, "Avg trades / session", text_color = color.white)
+    table.cell(perf, 1, 11, sessionInstances > 0 ? str.tostring(1.0 * n / sessionInstances, "#.##") : "-", text_color = color.white)
+    table.cell(perf, 0, 12, "Timeframe", text_color = color.white)
+    table.cell(perf, 1, 12, tfLabel() + " (run 1m / 3m / 5m separately)", text_color = color.white)
+    table.cell(perf, 0, 13, "Costs in P&L", text_color = color.white)
+    table.cell(perf, 1, 13, "commission + slippage from Properties", text_color = color.white)
+    table.cell(perf, 0, 14, "Fill model", text_color = color.white)
+    table.cell(perf, 1, 14, "signal @ close → fill next open", text_color = color.white)
+    table.cell(perf, 0, 15, "Bars loaded", text_color = color.white)
+    table.cell(perf, 1, 15, str.tostring(last_bar_index + 1), text_color = color.white)
+
+    table.cell(buck, 0, 0, "Bucket", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(buck, 1, 0, "Trades", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(buck, 2, 0, "Win%", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(buck, 3, 0, "Net", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(buck, 4, 0, "PF", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(buck, 5, 0, "Avg R", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    table.cell(buck, 6, 0, "Per session", text_color = color.white, bgcolor = color.new(color.gray, 50))
+    for s = 0 to 4
+        [bn, bw, bnet, bgw, bgl, bsr] = bucketStats(1, s)
+        int inst = array.get(sessCount, s)
+        table.cell(buck, 0, 1 + s, sessionName(s), text_color = color.white)
+        table.cell(buck, 1, 1 + s, str.tostring(bn), text_color = color.white)
+        table.cell(buck, 2, 1 + s, fmtPct(bw, bn), text_color = color.white)
+        table.cell(buck, 3, 1 + s, str.tostring(bnet, "#.##"), text_color = bnet >= 0 ? color.lime : color.red)
+        table.cell(buck, 4, 1 + s, fmtPf(bgw, bgl), text_color = color.white)
+        table.cell(buck, 5, 1 + s, fmtR(bsr, bn), text_color = color.white)
+        table.cell(buck, 6, 1 + s, inst > 0 ? str.tostring(1.0 * bn / inst, "#.##") : "-", text_color = color.white)
+    for k = 1 to 4
+        [bn, bw, bnet, bgw, bgl, bsr] = bucketStats(2, k)
+        table.cell(buck, 0, 5 + k, setupName(k), text_color = color.white)
+        table.cell(buck, 1, 5 + k, str.tostring(bn), text_color = color.white)
+        table.cell(buck, 2, 5 + k, fmtPct(bw, bn), text_color = color.white)
+        table.cell(buck, 3, 5 + k, str.tostring(bnet, "#.##"), text_color = bnet >= 0 ? color.lime : color.red)
+        table.cell(buck, 4, 5 + k, fmtPf(bgw, bgl), text_color = color.white)
+        table.cell(buck, 5, 5 + k, fmtR(bsr, bn), text_color = color.white)
+        table.cell(buck, 6, 5 + k, "-", text_color = color.white)
+    table.cell(buck, 0, 10, "Session quality = observed win% above, configured score in dashboard", text_color = color.gray)
