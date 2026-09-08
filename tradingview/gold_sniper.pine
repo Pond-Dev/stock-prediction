@@ -6,7 +6,6 @@ float width = input.float(0.15, "Zone half-width / M5 ATR", minval=0.05, maxval=
 float minRoom = input.float(1.0, "Minimum room to opposing zone / M1 ATR", minval=0.25, maxval=5.0, step=0.25)
 int expiry = input.int(3, "Setup valid for next N M1 bars", minval=1, maxval=10)
 int cooldown = input.int(3, "Full bars to skip after signal", minval=0, maxval=20)
-bool showHistory = input.bool(true, "Show historical candidates (gray H)")
 bool showZones = input.bool(true, "Show active zones")
 bool useOB = input.bool(true, "Add M1 internal Order Block zones (SMC)")
 
@@ -16,10 +15,7 @@ if barstate.isfirst and (not timeframe.isminutes or timeframe.multiplier != 1 or
 float a = ta.atr(14)[1]
 float tick = syminfo.mintick
 float pad = math.max(2 * tick, a * 0.05)
-// Every requested expression is offset. Pivots become usable only AFTER
-// strength M5 bars have closed to their right. Never backdate a zone or signal.
 [pl, ph, ma, mt, m5Close, m5Fast, m5Slow] = request.security(syminfo.tickerid, "5", [ta.pivotlow(low, strength, strength)[1], ta.pivothigh(high, strength, strength)[1], ta.atr(14)[1], time[1], close[1], ta.ema(close, 20)[1], ta.ema(close, 50)[1]], lookahead=barmerge.lookahead_on)
-// EMA 20/50 regime: both slopes agree, gap >= 0.10 ATR, M5 confirms. Display only, not a gate.
 float fast = ta.ema(close, 20)
 float slow = ta.ema(close, 50)
 bool trendUp = fast > slow and fast > fast[3] and slow >= slow[3] and fast - slow >= a * 0.10 and m5Close > m5Fast and m5Fast > m5Slow
@@ -27,13 +23,13 @@ bool trendDown = fast < slow and fast < fast[3] and slow <= slow[3] and slow - f
 varip array<float> bottoms = array.new_float()
 varip array<float> tops = array.new_float()
 varip array<int> sides = array.new_int()
-varip array<int> kinds = array.new_int() // 0 = M5 pivot zone, 1 = M1 internal order block
+varip array<int> kinds = array.new_int()
 varip array<int> births = array.new_int()
 varip array<bool> available = array.new_bool()
-varip array<int> touches = array.new_int() // completed visits: price entered the zone, counted once per visit
+varip array<int> touches = array.new_int()
 varip array<bool> touching = array.new_bool()
 varip int lastM5 = na
-var int structure = 0 // M1 internal structure: 0 until the first break, then +1 bullish / -1 bearish
+var int structure = 0
 
 f_remove(int i) =>
     array.remove(bottoms, i)
@@ -45,15 +41,11 @@ f_remove(int i) =>
     array.remove(touches, i)
     array.remove(touching, i)
 
-// Break lean per zone: structure pointing through it, EMA pointing through it,
-// third or later test. Two of three = likely BREAK, otherwise likely HOLD.
-// ponytail: naive 3-factor vote, tune weights once two weeks of signals are logged.
 f_breakLean(int side, int n) =>
     int score = (structure == -side ? 1 : 0) + ((side == 1 ? fast < slow : fast > slow) ? 1 : 0) + (n >= 3 ? 1 : 0)
     score >= 2
 
 f_addZone(float lo, float hi, int side, int kind) =>
-    // Do not stack overlapping zones of the same side. Existing bounds stay fixed.
     bool overlap = false
     if array.size(sides) > 0
         for i = 0 to array.size(sides) - 1
@@ -75,7 +67,6 @@ f_add(float price, int side) =>
     float halfWidth = math.max(2 * tick, ma * width)
     f_addZone(price - halfWidth, price + halfWidth, side, 0)
 
-// na means no opposing zone was found, NOT unlimited profit potential.
 f_room(int side, float price) =>
     float room = na
     if array.size(sides) > 0
@@ -153,10 +144,6 @@ if pending != 0 and bar_index > armed
 if barstate.isrealtime
     started := true
 
-// M1 internal structure ported from LuxAlgo SMC: 5-bar leg swings, a break is an
-// M1 close through the last swing, the order block is the extreme candle between
-// that swing and the break. Volatile candles (range >= 2x ATR200) are inverted so
-// they are never picked, same as the original.
 float atr200 = ta.atr(200)
 bool volatile = high - low >= 2 * atr200
 float pHigh = volatile ? low : high
@@ -180,8 +167,6 @@ var float obLowTop = na
 var float obHigh = na
 var float obHighBottom = na
 
-// Remove zones on an M1 CLOSE through their far edge, or after eight hours.
-// Wicks may sweep a zone and recover; broken zones are not flipped automatically.
 if barstate.isconfirmed
     if leg == 0 and legPrev == 1
         swingHi := high[5]
@@ -224,7 +209,6 @@ if barstate.isconfirmed
         else if side == 1 ? low > hi + a * 0.25 : high < lo - a * 0.25
             array.set(available, i, true)
         i -= 1
-    // Cancel a pending setup immediately if its supporting zone was removed.
     bool stillExists = false
     if pending != 0 and array.size(sides) > 0
         for j = 0 to array.size(sides) - 1
@@ -246,7 +230,6 @@ if barstate.isconfirmed
             int side = array.get(sides, j)
             float lo = array.get(bottoms, j)
             float hi = array.get(tops, j)
-            // Previous close must approach from the correct side of the zone.
             bool rejection = side == 1 ? close[1] > hi and low <= hi and high >= lo and close > hi and close > open and cp >= 0.65 : close[1] < lo and high >= lo and low <= hi and close < lo and close < open and cp <= 0.35
             float trigger = side == 1 ? math.ceil((high + pad) / tick) * tick : math.floor((low - pad) / tick) * tick
             float stretch = side == 1 ? trigger - hi : lo - trigger
@@ -268,7 +251,6 @@ if barstate.isconfirmed
         array.set(available, chosen, false)
         status := pending == 1 ? "Get ready to BUY" : "Get ready to SELL"
 
-// Vivid palette: green = BUY zone, red = SELL zone, amber = weak zone (caution, no trade)
 color green = #00E676
 color red = #FF1744
 color amber = #FFAB00
@@ -293,17 +275,11 @@ fastPlot = plot(fast, "EMA 20", color=#FFB300, linewidth=2)
 slowPlot = plot(slow, "EMA 50", color=blue, linewidth=2)
 fill(fastPlot, slowPlot, color=fast > slow ? color.new(green, 85) : color.new(red, 85), title="EMA band")
 plot(pending != 0 ? entry : signalPrice, "Entry trigger", color=pending == 1 or signalSide == 1 ? green : red, linewidth=2, style=plot.style_linebr)
-// Stop level, already computed past the far edge of the zone. Dotted so it never
-// reads as a second entry line on a sell, where both would otherwise be red.
 plot(pending != 0 or signalSide != 0 ? invalid : na, "Stop loss", color=red, linewidth=3, style=plot.style_circles)
 plotshape(readySide == 1, "Buy ready", shape.circle, location.belowbar, green, text="READY", textcolor=green, size=size.tiny)
 plotshape(readySide == -1, "Sell ready", shape.circle, location.abovebar, red, text="READY", textcolor=red, size=size.tiny)
 plotshape(signalSide == 1 and liveSignal, "Live BUY", shape.labelup, location.belowbar, green, text="BUY", textcolor=color.white)
 plotshape(signalSide == -1 and liveSignal, "Live SELL", shape.labeldown, location.abovebar, red, text="SELL", textcolor=color.white)
-plotshape(showHistory and signalSide == 1 and not liveSignal, "Historical buy candidate", shape.triangleup, location.belowbar, color.gray, text="H", size=size.tiny)
-plotshape(showHistory and signalSide == -1 and not liveSignal, "Historical sell candidate", shape.triangledown, location.abovebar, color.gray, text="H", size=size.tiny)
-// One line per side: what to do, at what price, and how far away it still is.
-// Distance is shown in average candles (ATR), so it means the same in any volatility.
 f_plan(int j, bool isSupport) =>
     string act = isSupport ? "BUY" : "SELL"
     string msg = "No " + act + " level nearby"
@@ -315,12 +291,11 @@ f_plan(int j, bool isSupport) =>
         msg := brk ? "Do NOT " + act + " here, this level is weak" : act + " level " + str.tostring(edge, format.mintick) + "  (" + str.tostring(away, "#.#") + " candles away)"
     [msg, brk]
 
-// Big line and its color, shared by the corner panel and the on-chart tag.
 f_headline() =>
     string t = pending == 0 ? "WAIT - do not trade yet" : (pending == 1 ? "BUY if price goes ABOVE " : "SELL if price goes BELOW ") + str.tostring(entry, format.mintick) + "   Stop loss " + str.tostring(invalid, format.mintick)
     t
 
-var table panel = table.new(position.bottom_right, 1, 7, bgcolor=panelBg, frame_color=color.new(color.white, 60), frame_width=1, border_color=color.new(color.white, 88), border_width=1)
+var table panel = table.new(position.bottom_right, 1, 6, bgcolor=panelBg, frame_color=color.new(color.white, 60), frame_width=1, border_color=color.new(color.white, 88), border_width=1)
 if barstate.islast
     bool against = (pending != 0 ? pending : signalSide) * structure < 0
     int sIdx = -1
@@ -348,10 +323,7 @@ if barstate.islast
     table.cell(panel, 0, 3, regime + (against ? "   CAREFUL: this trade goes against it" : ""), text_color=against ? amber : regimeColor, bgcolor=color.new(against ? amber : regimeColor, 85), text_size=size.small)
     table.cell(panel, 0, 4, belowText, text_color=belowBrk ? amber : green, text_size=size.small)
     table.cell(panel, 0, 5, aboveText, text_color=aboveBrk ? amber : red, text_size=size.small)
-    table.cell(panel, 0, 6, "Gray H = a guess from old candles, not a real signal", text_color=color.new(color.white, 50), text_size=size.tiny)
 
-// Same words as the panel, parked next to the current candle so the plan is
-// readable without looking away from price. One label, moved, never stacked.
 var label tag = label.new(na, na, "", xloc=xloc.bar_index, style=label.style_label_left, textalign=text.align_left, size=size.normal)
 if barstate.islast
     label.set_xy(tag, bar_index + 3, close)
