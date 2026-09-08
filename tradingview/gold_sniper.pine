@@ -9,9 +9,6 @@ int cooldown = input.int(3, "Full bars to skip after signal", minval=0, maxval=2
 bool showHistory = input.bool(true, "Show historical candidates (gray H)")
 bool showZones = input.bool(true, "Show active zones")
 bool useOB = input.bool(true, "Add M1 internal Order Block zones (SMC)")
-bool useSession = input.bool(true, "Only arm new setups during session")
-string sessionHours = input.session("0800-1130,1330-1700", "Session hours (exchange tz below)")
-string sessionTz = input.string("America/New_York", "Session timezone")
 
 if barstate.isfirst and (not timeframe.isminutes or timeframe.multiplier != 1 or not chart.is_standard)
     runtime.error("Use standard 1-minute candles.")
@@ -19,9 +16,6 @@ if barstate.isfirst and (not timeframe.isminutes or timeframe.multiplier != 1 or
 float a = ta.atr(14)[1]
 float tick = syminfo.mintick
 float pad = math.max(2 * tick, a * 0.05)
-// Session gate uses the exchange timezone directly, DST-adjusted by Pine,
-// instead of a hardcoded local clock time that would drift with DST.
-bool inSession = not useSession or not na(time(timeframe.period, sessionHours, sessionTz))
 // Every requested expression is offset. Pivots become usable only AFTER
 // strength M5 bars have closed to their right. Never backdate a zone or signal.
 [pl, ph, ma, mt, m5Close, m5Fast, m5Slow] = request.security(syminfo.tickerid, "5", [ta.pivotlow(low, strength, strength)[1], ta.pivothigh(high, strength, strength)[1], ta.atr(14)[1], time[1], close[1], ta.ema(close, 20)[1], ta.ema(close, 50)[1]], lookahead=barmerge.lookahead_on)
@@ -113,7 +107,7 @@ varip float signalPrice = na
 varip bool liveSignal = false
 varip bool ended = false
 varip int readySide = 0
-varip string status = "Waiting for zone rejection"
+varip string status = "Waiting for price to reach a good level"
 
 if barstate.isnew or (barstate.isrealtime and not started)
     signalSide := 0
@@ -137,7 +131,7 @@ if pending != 0 and bar_index > armed
     float triggerRoom = f_room(pending, entry)
     bool roomOK = (na(room) or room >= setupAtr * minRoom) and (na(triggerRoom) or triggerRoom >= setupAtr * minRoom)
     if not exists or invalidHit or stale or gap or bar_index - armed > expiry or time - zoneBirth >= 28800000
-        status := stale ? "Skipped old crossing" : "Setup canceled / expired"
+        status := stale ? "Missed it - price already went past" : "Cancelled - price never came back"
         pending := 0
         ended := true
     else if touched
@@ -148,11 +142,11 @@ if pending != 0 and bar_index > armed
             signalPrice := entry
             liveSignal := barstate.isrealtime
             lastSignal := bar_index
-            status := liveSignal ? (pending == 1 ? "BUY triggered" : "SELL triggered") : "Historical candidate"
+            status := liveSignal ? (pending == 1 ? "GO! Buy now" : "GO! Sell now") : "This was a past signal, not now"
             if barstate.isrealtime
                 alert("Gold Sniper | " + syminfo.tickerid + " | M1 | " + (pending == 1 ? "BUY" : "SELL") + " | Trigger=" + str.tostring(entry, format.mintick) + " | Observed=" + str.tostring(close, format.mintick) + (pending * structure < 0 ? " | AGAINST STRUCTURE" : ""), alert.freq_once_per_bar)
         else
-            status := roomOK ? "Skipped missed / extended break" : "Opposing zone too close"
+            status := roomOK ? "Skipped - price jumped too far past the price" : "Skipped - not enough room to make money"
         pending := 0
         ended := true
 
@@ -239,13 +233,11 @@ if barstate.isconfirmed
     if pending != 0 and not stillExists
         pending := 0
         ended := true
-        status := "Zone broken / removed"
+        status := "Cancelled - the level broke"
 
     float span = high - low
     float cp = span > 0 ? (close - low) / span : 0.5
-    bool eligible = pending == 0 and not ended and not na(a) and a > 0 and span >= a * 0.25 and span <= a * 1.5 and (na(lastSignal) or bar_index - lastSignal > cooldown) and inSession
-    if not inSession and pending == 0 and not ended
-        status := "Outside session hours"
+    bool eligible = pending == 0 and not ended and not na(a) and a > 0 and span >= a * 0.25 and span <= a * 1.5 and (na(lastSignal) or bar_index - lastSignal > cooldown)
     int chosen = -1
     float best = na
     bool conflict = false
@@ -274,7 +266,7 @@ if barstate.isconfirmed
         armed := bar_index
         readySide := pending
         array.set(available, chosen, false)
-        status := pending == 1 ? "READY BUY at support" : "READY SELL at resistance"
+        status := pending == 1 ? "Get ready to BUY" : "Get ready to SELL"
 
 // Vivid palette: green = BUY zone, red = SELL zone, amber = weak zone (caution, no trade)
 color green = #00E676
@@ -307,18 +299,23 @@ plotshape(signalSide == 1 and liveSignal, "Live BUY", shape.labelup, location.be
 plotshape(signalSide == -1 and liveSignal, "Live SELL", shape.labeldown, location.abovebar, red, text="SELL", textcolor=color.white)
 plotshape(showHistory and signalSide == 1 and not liveSignal, "Historical buy candidate", shape.triangleup, location.belowbar, color.gray, text="H", size=size.tiny)
 plotshape(showHistory and signalSide == -1 and not liveSignal, "Historical sell candidate", shape.triangledown, location.abovebar, color.gray, text="H", size=size.tiny)
-// One line per side: nearest zone, distance, tests so far, and what to do about it.
+// One line per side: what to do, at what price, and how far away it still is.
+// Distance is shown in average candles (ATR), so it means the same in any volatility.
 f_plan(int j, bool isSupport) =>
-    string msg = isSupport ? "Below: no support zone" : "Above: no resistance zone"
+    string act = isSupport ? "BUY" : "SELL"
+    string msg = "No " + act + " level nearby"
     bool brk = true
     if j >= 0
         float edge = isSupport ? array.get(tops, j) : array.get(bottoms, j)
-        float dist = isSupport ? close - edge : edge - close
-        int n = array.get(touches, j)
-        brk := f_breakLean(isSupport ? 1 : -1, n)
-        string action = brk ? "WEAK - no " + (isSupport ? "BUY" : "SELL") : (isSupport ? "BUY" : "SELL") + " on rejection"
-        msg := (isSupport ? "Below: SUPPORT " : "Above: RESISTANCE ") + str.tostring(edge, format.mintick) + " | " + str.tostring(dist / a, "#.#") + " ATR | tested " + str.tostring(n) + "x | " + action
+        float away = (isSupport ? close - edge : edge - close) / a
+        brk := f_breakLean(isSupport ? 1 : -1, array.get(touches, j))
+        msg := brk ? "Do NOT " + act + " here, this level is weak" : act + " level " + str.tostring(edge, format.mintick) + "  (" + str.tostring(away, "#.#") + " candles away)"
     [msg, brk]
+
+// Big line and its color, shared by the corner panel and the on-chart tag.
+f_headline() =>
+    string t = pending == 0 ? "WAIT - do not trade yet" : (pending == 1 ? "BUY if price goes ABOVE " : "SELL if price goes BELOW ") + str.tostring(entry, format.mintick) + "   Stop loss " + str.tostring(invalid, format.mintick)
+    t
 
 var table panel = table.new(position.bottom_right, 1, 7, bgcolor=panelBg, frame_color=color.new(color.white, 60), frame_width=1, border_color=color.new(color.white, 88), border_width=1)
 if barstate.islast
@@ -339,13 +336,22 @@ if barstate.islast
                 rBot := bt
     [belowText, belowBrk] = f_plan(sIdx, true)
     [aboveText, aboveBrk] = f_plan(rIdx, false)
-    string regime = trendUp ? "TREND UP -> BUY zones only" : trendDown ? "TREND DOWN -> SELL zones only" : "RANGE -> both sides"
+    string regime = trendUp ? "Price is going UP, prefer buying" : trendDown ? "Price is going DOWN, prefer selling" : "Price is going sideways, both are ok"
     color regimeColor = trendUp ? green : trendDown ? red : blue
     color pendingColor = pending == 1 ? green : pending == -1 ? red : color.white
-    table.cell(panel, 0, 0, "GOLD SNIPER  |  M5 + OB zones  |  M1 entry", text_color=color.white, bgcolor=color.new(color.white, 85), text_size=size.small)
-    table.cell(panel, 0, 1, pending == 0 ? "Waiting  |  active zones: " + str.tostring(array.size(sides)) : (pending == 1 ? "READY BUY above " : "READY SELL below ") + str.tostring(entry, format.mintick), text_color=pendingColor, bgcolor=pending == 0 ? panelBg : color.new(pendingColor, 80), text_size=size.normal)
+    table.cell(panel, 0, 0, "GOLD SNIPER", text_color=color.white, bgcolor=color.new(color.white, 85), text_size=size.small)
+    table.cell(panel, 0, 1, f_headline(), text_color=pendingColor, bgcolor=pending == 0 ? panelBg : color.new(pendingColor, 80), text_size=size.normal)
     table.cell(panel, 0, 2, status, text_color=color.white, text_size=size.small)
-    table.cell(panel, 0, 3, regime + "  |  structure " + (structure == 1 ? "▲" : structure == -1 ? "▼" : "-") + (against ? "  |  AGAINST STRUCTURE" : ""), text_color=against ? amber : regimeColor, bgcolor=color.new(against ? amber : regimeColor, 85), text_size=size.small)
+    table.cell(panel, 0, 3, regime + (against ? "   CAREFUL: this trade goes against it" : ""), text_color=against ? amber : regimeColor, bgcolor=color.new(against ? amber : regimeColor, 85), text_size=size.small)
     table.cell(panel, 0, 4, belowText, text_color=belowBrk ? amber : green, text_size=size.small)
     table.cell(panel, 0, 5, aboveText, text_color=aboveBrk ? amber : red, text_size=size.small)
-    table.cell(panel, 0, 6, "Gray H = estimate; live may differ after reload", text_color=color.new(color.white, 50), text_size=size.tiny)
+    table.cell(panel, 0, 6, "Gray H = a guess from old candles, not a real signal", text_color=color.new(color.white, 50), text_size=size.tiny)
+
+// Same words as the panel, parked next to the current candle so the plan is
+// readable without looking away from price. One label, moved, never stacked.
+var label tag = label.new(na, na, "", xloc=xloc.bar_index, style=label.style_label_left, textalign=text.align_left, size=size.normal)
+if barstate.islast
+    label.set_xy(tag, bar_index + 3, close)
+    label.set_text(tag, f_headline() + "\n" + status)
+    label.set_color(tag, color.new(pending == 1 ? green : pending == -1 ? red : panelBg, 15))
+    label.set_textcolor(tag, color.white)
