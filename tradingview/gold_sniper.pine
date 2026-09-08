@@ -293,6 +293,9 @@ fastPlot = plot(fast, "EMA 20", color=#FFB300, linewidth=2)
 slowPlot = plot(slow, "EMA 50", color=blue, linewidth=2)
 fill(fastPlot, slowPlot, color=fast > slow ? color.new(green, 85) : color.new(red, 85), title="EMA band")
 plot(pending != 0 ? entry : signalPrice, "Entry trigger", color=pending == 1 or signalSide == 1 ? green : red, linewidth=2, style=plot.style_linebr)
+// Stop level, already computed past the far edge of the zone. Dotted so it never
+// reads as a second entry line on a sell, where both would otherwise be red.
+plot(pending != 0 or signalSide != 0 ? invalid : na, "Stop loss", color=red, linewidth=3, style=plot.style_circles)
 plotshape(readySide == 1, "Buy ready", shape.circle, location.belowbar, green, text="READY", textcolor=green, size=size.tiny)
 plotshape(readySide == -1, "Sell ready", shape.circle, location.abovebar, red, text="READY", textcolor=red, size=size.tiny)
 plotshape(signalSide == 1 and liveSignal, "Live BUY", shape.labelup, location.belowbar, green, text="BUY", textcolor=color.white)
