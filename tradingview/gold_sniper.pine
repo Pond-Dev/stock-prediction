@@ -345,7 +345,7 @@ if barstate.islast
     table.cell(panel, 0, 0, "GOLD SNIPER  |  M5 + OB zones  |  M1 entry", text_color=color.white, bgcolor=color.new(color.white, 85), text_size=size.small)
     table.cell(panel, 0, 1, pending == 0 ? "Waiting  |  active zones: " + str.tostring(array.size(sides)) : (pending == 1 ? "READY BUY above " : "READY SELL below ") + str.tostring(entry, format.mintick), text_color=pendingColor, bgcolor=pending == 0 ? panelBg : color.new(pendingColor, 80), text_size=size.normal)
     table.cell(panel, 0, 2, status, text_color=color.white, text_size=size.small)
-    table.cell(panel, 0, 3, regime + "  |  structure " + (structure == 1 ? "BULLISH" : structure == -1 ? "BEARISH" : "none") + (against ? "  |  AGAINST STRUCTURE" : ""), text_color=against ? amber : regimeColor, bgcolor=color.new(against ? amber : regimeColor, 85), text_size=size.small)
+    table.cell(panel, 0, 3, regime + "  |  structure " + (structure == 1 ? "▲" : structure == -1 ? "▼" : "-") + (against ? "  |  AGAINST STRUCTURE" : ""), text_color=against ? amber : regimeColor, bgcolor=color.new(against ? amber : regimeColor, 85), text_size=size.small)
     table.cell(panel, 0, 4, belowText, text_color=belowBrk ? amber : green, text_size=size.small)
     table.cell(panel, 0, 5, aboveText, text_color=aboveBrk ? amber : red, text_size=size.small)
     table.cell(panel, 0, 6, "Gray H = estimate; live may differ after reload", text_color=color.new(color.white, 50), text_size=size.tiny)
