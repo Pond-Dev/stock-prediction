@@ -1,14 +1,14 @@
 //@version=6
 indicator("Gold Sniper", shorttitle="Gold Sniper", overlay=true, max_bars_back=500, max_boxes_count=20)
 
-int strength = input.int(2, "M5 swing confirmation bars", minval=1, maxval=5)
-float width = input.float(0.15, "Zone half-width / M5 ATR", minval=0.05, maxval=0.5, step=0.05)
-float minRR = input.float(1.5, "Minimum reward : risk", minval=0.5, maxval=5.0, step=0.25)
-bool withTrend = input.bool(false, "Only trade with the M5 trend")
-int expiry = input.int(3, "Setup valid for next N M1 bars", minval=1, maxval=10)
-int cooldown = input.int(3, "Full bars to skip after signal", minval=0, maxval=20)
-bool showZones = input.bool(true, "Show active zones")
-bool useOB = input.bool(true, "Add M1 internal Order Block zones (SMC)")
+int strength = input.int(2, "M5 swing confirmation bars", minval=1, maxval=5, display=display.none)
+float width = input.float(0.15, "Zone half-width / M5 ATR", minval=0.05, maxval=0.5, step=0.05, display=display.none)
+float minRR = input.float(1.5, "Minimum reward : risk", minval=0.5, maxval=5.0, step=0.25, display=display.none)
+bool withTrend = input.bool(false, "Only trade with the M5 trend", display=display.none)
+int expiry = input.int(3, "Setup valid for next N M1 bars", minval=1, maxval=10, display=display.none)
+int cooldown = input.int(3, "Full bars to skip after signal", minval=0, maxval=20, display=display.none)
+bool showZones = input.bool(true, "Show active zones", display=display.none)
+bool useOB = input.bool(true, "Add M1 internal Order Block zones (SMC)", display=display.none)
 
 if barstate.isfirst and (not timeframe.isminutes or timeframe.multiplier != 1 or not chart.is_standard)
     runtime.error("Use standard 1-minute candles.")
@@ -278,7 +278,7 @@ if barstate.isconfirmed
     else if pending == 0 and not ended and array.size(sides) > 0
         for j = 0 to array.size(sides) - 1
             if low <= array.get(tops, j) and high >= array.get(bottoms, j)
-                status := (array.get(sides, j) == 1 ? "In the BUY zone" : "In the SELL zone") + " - waiting for a rejection candle" + (eligible ? "" : " (candle size out of range)")
+                status := (array.get(sides, j) == 1 ? "In the BUY zone" : "In the SELL zone") + " - waiting for a rejection candle" + (eligible ? "" : span < a * 0.25 ? " (candle too small)" : " (cooldown)")
 
 color green = #00E676
 color red = #FF1744
@@ -297,19 +297,18 @@ if barstate.islast
             bool brk = f_breakLean(side, n)
             color c = side == 1 ? green : red
             bool ob = array.get(kinds, j) == 1
-            box b = box.new(left=array.get(births, j), top=array.get(tops, j), right=time + 60000, bottom=array.get(bottoms, j), xloc=xloc.bar_time, extend=extend.right, border_color=brk ? amber : c, border_width=brk ? 1 : 2, border_style=ob ? line.style_dashed : line.style_solid, bgcolor=color.new(brk ? amber : c, brk ? 90 : 82))
+            box b = box.new(left=array.get(births, j), top=array.get(tops, j), right=time + 60000, bottom=array.get(bottoms, j), xloc=xloc.bar_time, border_color=brk ? amber : c, border_width=brk ? 1 : 2, border_style=ob ? line.style_dashed : line.style_solid, bgcolor=color.new(brk ? amber : c, brk ? 90 : 82))
             array.push(boxes, b)
 
-fastPlot = plot(fast, "EMA 20", color=#FFB300, linewidth=2)
-slowPlot = plot(slow, "EMA 50", color=blue, linewidth=2)
-fill(fastPlot, slowPlot, color=fast > slow ? color.new(green, 85) : color.new(red, 85), title="EMA band")
-plot(pending != 0 ? entry : signalPrice, "Entry trigger", color=pending == 1 or signalSide == 1 ? green : red, linewidth=2, style=plot.style_linebr)
-plot(pending != 0 or signalSide != 0 ? invalid : na, "Stop loss", color=red, linewidth=3, style=plot.style_circles)
-plot(pending != 0 or signalSide != 0 ? target : na, "Take profit", color=color.aqua, linewidth=3, style=plot.style_circles)
-plotshape(readySide == 1, "Buy ready", shape.circle, location.belowbar, green, text="READY", textcolor=green, size=size.tiny)
-plotshape(readySide == -1, "Sell ready", shape.circle, location.abovebar, red, text="READY", textcolor=red, size=size.tiny)
-plotshape(signalSide == 1 and liveSignal, "Live BUY", shape.labelup, location.belowbar, green, text="BUY", textcolor=color.white)
-plotshape(signalSide == -1 and liveSignal, "Live SELL", shape.labeldown, location.abovebar, red, text="SELL", textcolor=color.white)
+plot(fast, "EMA 20", color=#FFB300, linewidth=2, display=display.pane)
+plot(slow, "EMA 50", color=blue, linewidth=2, display=display.pane)
+plot(pending != 0 ? entry : signalPrice, "Entry trigger", color=pending == 1 or signalSide == 1 ? green : red, linewidth=2, style=plot.style_linebr, display=display.pane + display.price_scale)
+plot(pending != 0 or signalSide != 0 ? invalid : na, "Stop loss", color=red, linewidth=3, style=plot.style_circles, display=display.pane + display.price_scale)
+plot(pending != 0 or signalSide != 0 ? target : na, "Take profit", color=color.aqua, linewidth=3, style=plot.style_circles, display=display.pane + display.price_scale)
+plotshape(readySide == 1, "Buy ready", shape.circle, location.belowbar, green, text="READY", textcolor=green, size=size.tiny, display=display.pane)
+plotshape(readySide == -1, "Sell ready", shape.circle, location.abovebar, red, text="READY", textcolor=red, size=size.tiny, display=display.pane)
+plotshape(signalSide == 1 and liveSignal, "Live BUY", shape.labelup, location.belowbar, green, text="BUY", textcolor=color.white, display=display.pane)
+plotshape(signalSide == -1 and liveSignal, "Live SELL", shape.labeldown, location.abovebar, red, text="SELL", textcolor=color.white, display=display.pane)
 f_plan(int j, bool isSupport) =>
     string act = isSupport ? "BUY" : "SELL"
     string msg = "No " + act + " level nearby"
@@ -381,12 +380,4 @@ if barstate.islast
         f_row(13, trendOK, withTrend ? "M5 trend allows " + (side == 1 ? "buying" : "selling") : "Trend filter is off")
         f_row(14, coolOK, "Cooldown over")
     else
-        for r = 7 to 14
-            table.cell(panel, 0, r, "", text_size=size.tiny)
-
-var label tag = label.new(na, na, "", xloc=xloc.bar_index, style=label.style_label_left, textalign=text.align_left, size=size.normal)
-if barstate.islast
-    label.set_xy(tag, bar_index + 3, close)
-    label.set_text(tag, f_headline() + "\n" + status)
-    label.set_color(tag, color.new(pending == 1 ? green : pending == -1 ? red : panelBg, 15))
-    label.set_textcolor(tag, color.white)
+        table.clear(panel, 0, 7, 0, 14)
