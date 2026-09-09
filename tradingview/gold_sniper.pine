@@ -1,5 +1,5 @@
 //@version=6
-strategy("Gold Sniper", shorttitle="Gold Sniper", overlay=true, max_bars_back=500, max_boxes_count=20, initial_capital=10000, default_qty_type=strategy.fixed, default_qty_value=1, pyramiding=0)
+indicator("Gold Sniper", shorttitle="Gold Sniper", overlay=true, max_bars_back=500, max_boxes_count=20)
 
 int strength = input.int(2, "M5 swing confirmation bars", minval=1, maxval=5)
 float width = input.float(0.15, "Zone half-width / M5 ATR", minval=0.05, maxval=0.5, step=0.05)
@@ -121,8 +121,6 @@ varip bool liveSignal = false
 varip bool ended = false
 varip int tradesToday = 0
 varip int readySide = 0
-var float oSL = na
-var float oTP = na
 varip string status = "Waiting for price to reach a good level"
 
 if barstate.isnew or (barstate.isrealtime and not started)
@@ -171,12 +169,6 @@ if pending != 0 and bar_index > armed
             status := roomOK ? "Skipped - price jumped too far past the price" : "Skipped - reward too small for the risk"
         pending := 0
         ended := true
-
-if pending == 0 and strategy.position_size == 0
-    strategy.cancel_all()
-
-if strategy.position_size != 0
-    strategy.exit("exit", stop=oSL, limit=oTP)
 
 if barstate.isrealtime
     started := true
@@ -283,10 +275,6 @@ if barstate.isconfirmed
         readySide := pending
         array.set(available, chosen, false)
         status := pending == 1 ? "Get ready to BUY" : "Get ready to SELL"
-        if strategy.position_size == 0
-            oSL := invalid
-            oTP := target
-            strategy.entry(pending == 1 ? "L" : "S", pending == 1 ? strategy.long : strategy.short, stop=entry)
     else if pending == 0 and not ended and array.size(sides) > 0
         for j = 0 to array.size(sides) - 1
             if low <= array.get(tops, j) and high >= array.get(bottoms, j)
