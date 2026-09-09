@@ -1,9 +1,10 @@
 //@version=6
-indicator("Gold Sniper", shorttitle="Gold Sniper", overlay=true, max_bars_back=500, max_boxes_count=20)
+strategy("Gold Sniper", shorttitle="Gold Sniper", overlay=true, max_bars_back=500, max_boxes_count=20, initial_capital=10000, default_qty_type=strategy.fixed, default_qty_value=1, pyramiding=0)
 
 int strength = input.int(2, "M5 swing confirmation bars", minval=1, maxval=5)
 float width = input.float(0.15, "Zone half-width / M5 ATR", minval=0.05, maxval=0.5, step=0.05)
-float minRoom = input.float(1.0, "Minimum room to opposing zone / M1 ATR", minval=0.25, maxval=5.0, step=0.25)
+float minRR = input.float(1.5, "Minimum reward : risk", minval=0.5, maxval=5.0, step=0.25)
+bool withTrend = input.bool(false, "Only trade with the M5 trend")
 int expiry = input.int(3, "Setup valid for next N M1 bars", minval=1, maxval=10)
 int cooldown = input.int(3, "Full bars to skip after signal", minval=0, maxval=20)
 bool showZones = input.bool(true, "Show active zones")
@@ -78,6 +79,26 @@ f_room(int side, float price) =>
                 room := na(room) ? distance : math.min(room, distance)
     room
 
+f_gates(int j) =>
+    int side = array.get(sides, j)
+    float lo = array.get(bottoms, j)
+    float hi = array.get(tops, j)
+    float span = high - low
+    float cp = span > 0 ? (close - low) / span : 0.5
+    bool touch = low <= hi and high >= lo
+    bool rejection = side == 1 ? close[1] > lo and touch and close > hi and close > open and cp >= 0.65 : close[1] < hi and touch and close < lo and close < open and cp <= 0.35
+    float trigger = side == 1 ? math.ceil((high + pad) / tick) * tick : math.floor((low - pad) / tick) * tick
+    float stretch = side == 1 ? trigger - hi : lo - trigger
+    float room = f_room(side, trigger)
+    float stopDist = side == 1 ? trigger - (math.min(low, lo) - pad) : (math.max(high, hi) + pad) - trigger
+    float rr = room / stopDist
+    bool sizeOK = span >= a * 0.25
+    bool fresh = array.get(available, j)
+    bool nearOK = stretch <= a
+    bool rrOK = na(room) or room >= stopDist * minRR
+    bool trendOK = not withTrend or not (side == 1 ? trendDown : trendUp)
+    [touch, rejection, sizeOK, fresh, nearOK, rrOK, trendOK, stretch, rr]
+
 if not na(mt) and (na(lastM5) or mt != lastM5)
     lastM5 := mt
     if not na(pl)
@@ -90,6 +111,7 @@ varip int armed = na
 varip int zoneBirth = na
 varip float entry = na
 varip float invalid = na
+varip float target = na
 varip float setupAtr = na
 varip int lastSignal = na
 varip bool started = false
@@ -97,7 +119,10 @@ varip int signalSide = 0
 varip float signalPrice = na
 varip bool liveSignal = false
 varip bool ended = false
+varip int tradesToday = 0
 varip int readySide = 0
+var float oSL = na
+var float oTP = na
 varip string status = "Waiting for price to reach a good level"
 
 if barstate.isnew or (barstate.isrealtime and not started)
@@ -106,6 +131,10 @@ if barstate.isnew or (barstate.isrealtime and not started)
     liveSignal := false
     ended := false
     readySide := 0
+    if dayofmonth != dayofmonth[1]
+        tradesToday := 0
+    if pending == 0
+        status := "Waiting for price to reach a good level"
 
 if pending != 0 and bar_index > armed
     bool exists = false
@@ -120,7 +149,8 @@ if pending != 0 and bar_index > armed
     float observed = barstate.isrealtime ? close : (pending == 1 ? math.max(open, entry) : math.min(open, entry))
     float room = f_room(pending, observed)
     float triggerRoom = f_room(pending, entry)
-    bool roomOK = (na(room) or room >= setupAtr * minRoom) and (na(triggerRoom) or triggerRoom >= setupAtr * minRoom)
+    float stopDist = math.abs(entry - invalid)
+    bool roomOK = (na(room) or room >= stopDist * minRR) and (na(triggerRoom) or triggerRoom >= stopDist * minRR)
     if not exists or invalidHit or stale or gap or bar_index - armed > expiry or time - zoneBirth >= 28800000
         status := stale ? "Missed it - price already went past" : "Cancelled - price never came back"
         pending := 0
@@ -130,16 +160,23 @@ if pending != 0 and bar_index > armed
         bool through = pending == 1 ? observed >= entry : observed <= entry
         if through and overshoot <= setupAtr * 0.15 and roomOK
             signalSide := pending
+            tradesToday += 1
             signalPrice := entry
             liveSignal := barstate.isrealtime
             lastSignal := bar_index
             status := liveSignal ? (pending == 1 ? "GO! Buy now" : "GO! Sell now") : "This was a past signal, not now"
             if barstate.isrealtime
-                alert("Gold Sniper | " + syminfo.tickerid + " | M1 | " + (pending == 1 ? "BUY" : "SELL") + " | Trigger=" + str.tostring(entry, format.mintick) + " | Observed=" + str.tostring(close, format.mintick) + (pending * structure < 0 ? " | AGAINST STRUCTURE" : ""), alert.freq_once_per_bar)
+                alert("Gold Sniper | " + syminfo.tickerid + " | M1 | " + (pending == 1 ? "BUY" : "SELL") + " | Trigger=" + str.tostring(entry, format.mintick) + " | Observed=" + str.tostring(close, format.mintick) + " | SL=" + str.tostring(invalid, format.mintick) + " | TP=" + str.tostring(target, format.mintick) + (pending * structure < 0 ? " | AGAINST STRUCTURE" : ""), alert.freq_once_per_bar)
         else
-            status := roomOK ? "Skipped - price jumped too far past the price" : "Skipped - not enough room to make money"
+            status := roomOK ? "Skipped - price jumped too far past the price" : "Skipped - reward too small for the risk"
         pending := 0
         ended := true
+
+if pending == 0 and strategy.position_size == 0
+    strategy.cancel_all()
+
+if strategy.position_size != 0
+    strategy.exit("exit", stop=oSL, limit=oTP)
 
 if barstate.isrealtime
     started := true
@@ -220,21 +257,15 @@ if barstate.isconfirmed
         status := "Cancelled - the level broke"
 
     float span = high - low
-    float cp = span > 0 ? (close - low) / span : 0.5
-    bool eligible = pending == 0 and not ended and not na(a) and a > 0 and span >= a * 0.25 and span <= a * 1.5 and (na(lastSignal) or bar_index - lastSignal > cooldown)
+    bool eligible = pending == 0 and not ended and not na(a) and a > 0 and span >= a * 0.25 and (na(lastSignal) or bar_index - lastSignal > cooldown)
     int chosen = -1
     float best = na
     bool conflict = false
     if eligible and array.size(sides) > 0
         for j = 0 to array.size(sides) - 1
             int side = array.get(sides, j)
-            float lo = array.get(bottoms, j)
-            float hi = array.get(tops, j)
-            bool rejection = side == 1 ? close[1] > hi and low <= hi and high >= lo and close > hi and close > open and cp >= 0.65 : close[1] < lo and high >= lo and low <= hi and close < lo and close < open and cp <= 0.35
-            float trigger = side == 1 ? math.ceil((high + pad) / tick) * tick : math.floor((low - pad) / tick) * tick
-            float stretch = side == 1 ? trigger - hi : lo - trigger
-            float room = f_room(side, trigger)
-            if rejection and array.get(available, j) and stretch <= a and (na(room) or room >= a * minRoom)
+            [touch, rejection, sizeOK, fresh, nearOK, rrOK, trendOK, stretch, rr] = f_gates(j)
+            if rejection and trendOK and fresh and nearOK and rrOK
                 if chosen >= 0 and array.get(sides, chosen) != side
                     conflict := true
                 if na(best) or stretch < best
@@ -245,11 +276,21 @@ if barstate.isconfirmed
         zoneBirth := array.get(births, chosen)
         entry := pending == 1 ? math.ceil((high + pad) / tick) * tick : math.floor((low - pad) / tick) * tick
         invalid := pending == 1 ? math.min(low, array.get(bottoms, chosen)) - pad : math.max(high, array.get(tops, chosen)) + pad
+        float room = f_room(pending, entry)
+        target := entry + pending * (na(room) ? math.abs(entry - invalid) * minRR : room)
         setupAtr := a
         armed := bar_index
         readySide := pending
         array.set(available, chosen, false)
         status := pending == 1 ? "Get ready to BUY" : "Get ready to SELL"
+        if strategy.position_size == 0
+            oSL := invalid
+            oTP := target
+            strategy.entry(pending == 1 ? "L" : "S", pending == 1 ? strategy.long : strategy.short, stop=entry)
+    else if pending == 0 and not ended and array.size(sides) > 0
+        for j = 0 to array.size(sides) - 1
+            if low <= array.get(tops, j) and high >= array.get(bottoms, j)
+                status := (array.get(sides, j) == 1 ? "In the BUY zone" : "In the SELL zone") + " - waiting for a rejection candle" + (eligible ? "" : " (candle size out of range)")
 
 color green = #00E676
 color red = #FF1744
@@ -276,6 +317,7 @@ slowPlot = plot(slow, "EMA 50", color=blue, linewidth=2)
 fill(fastPlot, slowPlot, color=fast > slow ? color.new(green, 85) : color.new(red, 85), title="EMA band")
 plot(pending != 0 ? entry : signalPrice, "Entry trigger", color=pending == 1 or signalSide == 1 ? green : red, linewidth=2, style=plot.style_linebr)
 plot(pending != 0 or signalSide != 0 ? invalid : na, "Stop loss", color=red, linewidth=3, style=plot.style_circles)
+plot(pending != 0 or signalSide != 0 ? target : na, "Take profit", color=color.aqua, linewidth=3, style=plot.style_circles)
 plotshape(readySide == 1, "Buy ready", shape.circle, location.belowbar, green, text="READY", textcolor=green, size=size.tiny)
 plotshape(readySide == -1, "Sell ready", shape.circle, location.abovebar, red, text="READY", textcolor=red, size=size.tiny)
 plotshape(signalSide == 1 and liveSignal, "Live BUY", shape.labelup, location.belowbar, green, text="BUY", textcolor=color.white)
@@ -292,10 +334,13 @@ f_plan(int j, bool isSupport) =>
     [msg, brk]
 
 f_headline() =>
-    string t = pending == 0 ? "WAIT - do not trade yet" : (pending == 1 ? "BUY if price goes ABOVE " : "SELL if price goes BELOW ") + str.tostring(entry, format.mintick) + "   Stop loss " + str.tostring(invalid, format.mintick)
+    string t = pending == 0 ? "WAIT - do not trade yet" : (pending == 1 ? "BUY if price goes ABOVE " : "SELL if price goes BELOW ") + str.tostring(entry, format.mintick) + "   Stop loss " + str.tostring(invalid, format.mintick) + "   Target " + str.tostring(target, format.mintick) + "  (R:R 1:" + str.tostring(math.abs(target - entry) / math.abs(entry - invalid), "#.#") + ")"
     t
 
-var table panel = table.new(position.bottom_right, 1, 6, bgcolor=panelBg, frame_color=color.new(color.white, 60), frame_width=1, border_color=color.new(color.white, 88), border_width=1)
+var table panel = table.new(position.bottom_right, 1, 15, bgcolor=panelBg, frame_color=color.new(color.white, 60), frame_width=1, border_color=color.new(color.white, 88), border_width=1)
+f_row(int r, bool ok, string txt) =>
+    table.cell(panel, 0, r, (ok ? "✓  " : "✗  ") + txt, text_color=ok ? green : red, text_halign=text.align_left, text_size=size.small)
+
 if barstate.islast
     bool against = (pending != 0 ? pending : signalSide) * structure < 0
     int sIdx = -1
@@ -317,12 +362,39 @@ if barstate.islast
     string regime = trendUp ? "Price is going UP, prefer buying" : trendDown ? "Price is going DOWN, prefer selling" : "Price is going sideways, both are ok"
     color regimeColor = trendUp ? green : trendDown ? red : blue
     color pendingColor = pending == 1 ? green : pending == -1 ? red : color.white
-    table.cell(panel, 0, 0, "GOLD SNIPER", text_color=color.white, bgcolor=color.new(color.white, 85), text_size=size.small)
+    table.cell(panel, 0, 0, "GOLD SNIPER   |   signals today: " + str.tostring(tradesToday), text_color=color.white, bgcolor=color.new(color.white, 85), text_size=size.small)
     table.cell(panel, 0, 1, f_headline(), text_color=pendingColor, bgcolor=pending == 0 ? panelBg : color.new(pendingColor, 80), text_size=size.normal)
     table.cell(panel, 0, 2, status, text_color=color.white, text_size=size.small)
     table.cell(panel, 0, 3, regime + (against ? "   CAREFUL: this trade goes against it" : ""), text_color=against ? amber : regimeColor, bgcolor=color.new(against ? amber : regimeColor, 85), text_size=size.small)
     table.cell(panel, 0, 4, belowText, text_color=belowBrk ? amber : green, text_size=size.small)
     table.cell(panel, 0, 5, aboveText, text_color=aboveBrk ? amber : red, text_size=size.small)
+    int fIdx = -1
+    float fDist = na
+    if array.size(sides) > 0
+        for j = 0 to array.size(sides) - 1
+            float lo = array.get(bottoms, j)
+            float hi = array.get(tops, j)
+            float d = close > hi ? close - hi : close < lo ? lo - close : 0
+            if na(fDist) or d < fDist
+                fIdx := j
+                fDist := d
+    string head = pending != 0 ? "SETUP ARMED - " + str.tostring(expiry - (bar_index - armed)) + " bars left to break " + str.tostring(entry, format.mintick) : fIdx < 0 ? "CHECKLIST - no zone on chart" : "CHECKLIST - nearest " + (array.get(sides, fIdx) == 1 ? "BUY" : "SELL") + " zone " + str.tostring(array.get(bottoms, fIdx), format.mintick) + " - " + str.tostring(array.get(tops, fIdx), format.mintick) + (fDist == 0 ? "  (price is inside)" : "  (" + str.tostring(fDist / a, "#.#") + " candles away)")
+    table.cell(panel, 0, 6, head, text_color=color.white, bgcolor=color.new(color.white, 85), text_size=size.small)
+    if pending == 0 and fIdx >= 0
+        int side = array.get(sides, fIdx)
+        [touch, rejection, sizeOK, fresh, nearOK, rrOK, trendOK, stretch, rr] = f_gates(fIdx)
+        bool coolOK = na(lastSignal) or bar_index - lastSignal > cooldown
+        f_row(7, touch, "Price touched the zone")
+        f_row(8, rejection, side == 1 ? "Rejection candle: green, closed above " + str.tostring(array.get(tops, fIdx), format.mintick) + ", close in top 35%" : "Rejection candle: red, closed below " + str.tostring(array.get(bottoms, fIdx), format.mintick) + ", close in bottom 35%")
+        f_row(9, sizeOK, "Not a doji (candle >= 0.25 ATR)")
+        f_row(10, fresh, "Level not used yet")
+        f_row(11, nearOK, "Entry within 1 ATR of the zone (" + str.tostring(stretch / a, "#.##") + ")")
+        f_row(12, rrOK, na(rr) ? "R:R open, no opposing zone" : "R:R 1:" + str.tostring(rr, "#.#") + "  (need " + str.tostring(minRR, "#.##") + ")")
+        f_row(13, trendOK, withTrend ? "M5 trend allows " + (side == 1 ? "buying" : "selling") : "Trend filter is off")
+        f_row(14, coolOK, "Cooldown over")
+    else
+        for r = 7 to 14
+            table.cell(panel, 0, r, "", text_size=size.tiny)
 
 var label tag = label.new(na, na, "", xloc=xloc.bar_index, style=label.style_label_left, textalign=text.align_left, size=size.normal)
 if barstate.islast
