@@ -1,0 +1,91 @@
+//@version=6
+// SMA 5/15/20 + ATR trend reader.
+// UP   : SMA5 > SMA15 > SMA20 and the three are spread apart
+// DOWN : SMA5 < SMA15 < SMA20 and the three are spread apart
+// SIDE : anything else (lines tangled / wrong order)
+// "Spread apart" = (max-min of the three SMAs) >= tangle x ATR, so the sideway
+// test scales with volatility instead of a fixed point value.
+indicator("SMA Trend + ATR", shorttitle="SMA/ATR", overlay=true)
+
+int   len1   = input.int(5,  "SMA fast",   minval=1, group="SMA")
+int   len2   = input.int(15, "SMA mid",    minval=1, group="SMA")
+int   len3   = input.int(20, "SMA slow",   minval=1, group="SMA")
+int   atrLen = input.int(14, "ATR length", minval=1, group="ATR")
+float slMult = input.float(1.5, "Stop loss x ATR", minval=0.5, step=0.5, group="ATR")
+float rr     = input.float(1.5, "Take profit R:R", minval=0.5, step=0.5, group="ATR")
+float tangle = input.float(0.7,  "Sideway threshold x ATR", minval=0.0, step=0.05, group="ATR",
+     tooltip="SMA spread below this (in ATR) counts as sideway")
+
+// Display - default is the quiet version: coloured SMAs, one small table, no
+// background wash (other overlays already paint the chart).
+bool showBg    = input.bool(false, "Background tint",    group="Display")
+bool showTable = input.bool(true,  "Info table",         group="Display")
+bool showArrow = input.bool(true,  "Trend flip arrows",  group="Display")
+bool showLvl   = input.bool(true,  "SL / TP lines",      group="Display")
+
+float sma1 = ta.sma(close, len1)
+float sma2 = ta.sma(close, len2)
+float sma3 = ta.sma(close, len3)
+float atr  = ta.atr(atrLen)
+
+float spread = math.max(sma1, sma2, sma3) - math.min(sma1, sma2, sma3)
+bool  spreadOk = spread >= tangle * atr
+bool  up   = sma1 > sma2 and sma2 > sma3 and spreadOk
+bool  down = sma1 < sma2 and sma2 < sma3 and spreadOk
+string trend = up ? "UP" : down ? "DOWN" : "SIDE"
+color  tCol  = up ? color.teal : down ? color.red : color.gray
+
+// Ribbon: the fill between SMA15 and SMA20 is the trend at a glance - green
+// body = up, red = down, grey = sideway. Reading a coloured band beats
+// comparing three thin wiggly lines.
+plot(sma1, "SMA 5",  color.new(color.gray, 55), 1)
+p2 = plot(sma2, "SMA 15", color.new(tCol, 0), 2)
+p3 = plot(sma3, "SMA 20", color.new(tCol, 30), 2)
+fill(p2, p3, color.new(tCol, 65), title="Trend ribbon")
+bgcolor(showBg ? color.new(tCol, 92) : na)
+
+var table t = table.new(position.top_right, 2, 3, border_width=1)
+if showTable and barstate.islast
+    color bg = color.new(color.black, 20)
+    table.cell(t, 0, 0, "TREND", text_color=color.white, bgcolor=bg, text_size=size.small)
+    table.cell(t, 1, 0, trend,   text_color=color.white, bgcolor=tCol, text_size=size.small)
+    table.cell(t, 0, 1, "5/15/20", text_color=color.gray, bgcolor=bg, text_size=size.tiny)
+    table.cell(t, 1, 1, str.tostring(sma1, format.mintick) + " / " + str.tostring(sma2, format.mintick)
+         + " / " + str.tostring(sma3, format.mintick), text_color=color.white, bgcolor=bg, text_size=size.tiny)
+    table.cell(t, 0, 2, "ATR / SL", text_color=color.gray, bgcolor=bg, text_size=size.tiny)
+    table.cell(t, 1, 2, str.tostring(atr, format.mintick) + " / " + str.tostring(slMult * atr, format.mintick),
+         text_color=color.white, bgcolor=bg, text_size=size.tiny)
+
+// SL / TP for a trade taken at the current close, sized off ATR. Drawn on the
+// last bar only - redrawing two objects beats plotting two history-wide lines
+// that nobody reads. Hidden while sideway: no trend, no trade.
+var line  slLine = na
+var line  tpLine = na
+var label slTag  = na
+var label tpTag  = na
+if showLvl and barstate.islast
+    line.delete(slLine)
+    line.delete(tpLine)
+    label.delete(slTag)
+    label.delete(tpTag)
+    if up or down
+        float risk = slMult * atr
+        float sl   = up ? close - risk : close + risk
+        float tp   = up ? close + risk * rr : close - risk * rr
+        int   x0   = bar_index - 20
+        slLine := line.new(x0, sl, bar_index, sl, color=color.red,  style=line.style_dashed, width=1, extend=extend.right)
+        tpLine := line.new(x0, tp, bar_index, tp, color=color.teal, style=line.style_dashed, width=1, extend=extend.right)
+        slTag  := label.new(bar_index, sl, "SL " + str.tostring(sl, format.mintick), style=label.style_label_left,
+             color=color.new(color.red, 20),  textcolor=color.white, size=size.small)
+        tpTag  := label.new(bar_index, tp, "TP " + str.tostring(tp, format.mintick), style=label.style_label_left,
+             color=color.new(color.teal, 20), textcolor=color.white, size=size.small)
+
+// Flip alerts - confirmed bars only, so they do not repaint.
+bool flipUp   = up   and not up[1]
+bool flipDown = down and not down[1]
+plotshape(showArrow and flipUp,   "Turned UP",   shape.labelup,   location.belowbar, color.teal,
+     text="UP",   textcolor=color.white, size=size.small)
+plotshape(showArrow and flipDown, "Turned DOWN", shape.labeldown, location.abovebar, color.red,
+     text="DOWN", textcolor=color.white, size=size.small)
+alertcondition(flipUp,   "SMA trend UP",   "SMA 5>15>20 - uptrend")
+alertcondition(flipDown, "SMA trend DOWN", "SMA 5<15<20 - downtrend")

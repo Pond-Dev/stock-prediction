@@ -1,10 +1,9 @@
 //@version=6
-// Gold Sniper - M1 XAUUSD entry helper. Draws zones, arms a setup, tracks the
-// one open trade, fires alerts. It places no orders and keeps no scoreboard:
-// the accounting lives in gold_sniper_strategy.pine, where TradingView's own
-// Strategy Tester does it. Same rules in both files - when they disagree the
-// Tester is right, it fills stops intrabar while this one can only see the
-// bar close.
+// STRATEGY BUILD of gold_sniper.pine - identical rules, plus strategy.entry /
+// strategy.exit so TradingView's Strategy Tester does the accounting. Where the
+// on-chart panel and the Tester disagree, the Tester is right: it fills stops
+// intrabar, the panel resolves them on the bar close. Trade this file's numbers,
+// run gold_sniper.pine on the live chart.
 //
 // Non-repainting by construction: every decision is taken inside
 // barstate.isconfirmed on closed-bar values only, and every persistent value is
@@ -12,8 +11,15 @@
 // replays exactly what was shown live. The price of that is the entry fill:
 // the signal lands at the M1 close, not at the trigger price. Rest a stop order
 // at the trigger when READY prints if you want the trigger price itself.
-indicator("Gold Sniper", shorttitle="Gold Sniper", overlay=true,
-     max_bars_back=500, max_boxes_count=500, max_labels_count=500, max_lines_count=500)
+strategy("Gold Sniper Strategy", shorttitle="GS Strategy", overlay=true,
+     max_bars_back=500, max_boxes_count=500, max_labels_count=500, max_lines_count=500,
+     initial_capital=1000, default_qty_type=strategy.fixed, default_qty_value=1,
+     commission_type=strategy.commission.cash_per_order, commission_value=0.15,
+     slippage=2, calc_on_every_tick=false, process_orders_on_close=true)
+// Commission defaults to half the XAUUSDc spread per side and slippage to 2
+// ticks, so a round trip costs about $0.30 on one lot. Raise both before
+// believing any result; the whole point of the exercise is that this number
+// decides the outcome, not the entry logic.
 
 int strength = input.int(2, "M5 swing confirmation bars", minval=1, maxval=5, display=display.none)
 float width = input.float(0.15, "Zone half-width / M5 ATR", minval=0.05, maxval=0.5, step=0.05, display=display.none)
@@ -219,6 +225,8 @@ if barstate.isconfirmed
         box.set_right(dTradeReward, bar_index)
         line.set_x2(dTradeEntry, bar_index)
         if exitKind != 0
+            if exitKind == 2
+                strategy.close_all(comment="หมดเวลา")
             tSide := 0
             alert("Gold Sniper · " + syminfo.tickerid + " · ปิดไม้ " + (exitKind == 1 ? "ถึงเป้า" : exitKind == -1 ? "โดนกัน" : "หมดเวลา/หมด session") + " ที่ " + str.tostring(exitPrice, format.mintick), alert.freq_once_per_bar_close)
 
@@ -253,6 +261,8 @@ if barstate.isconfirmed
                 dTradeRisk := box.new(bar_index, math.max(close, invalid), bar_index, math.min(close, invalid), xloc=xloc.bar_index, border_color=invisible, bgcolor=color.new(red, 85))
                 dTradeReward := box.new(bar_index, math.max(close, target), bar_index, math.min(close, target), xloc=xloc.bar_index, border_color=invisible, bgcolor=color.new(green, 85))
                 dTradeEntry := line.new(bar_index, close, bar_index, close, xloc=xloc.bar_index, color=color.white, width=1)
+                strategy.entry(pending == 1 ? "ซื้อ" : "ขาย", pending == 1 ? strategy.long : strategy.short)
+                strategy.exit(pending == 1 ? "ซื้อ" : "ขาย", from_entry=pending == 1 ? "ซื้อ" : "ขาย", stop=invalid, limit=target)
                 status := pending == 1 ? "GO! Buy now" : "GO! Sell now"
                 alert("Gold Sniper · " + syminfo.tickerid + " · M1 · " + mode + " · " + (pending == 1 ? "ซื้อ" : "ขาย") + " · ได้ที่ " + str.tostring(close, format.mintick) + " · จุดตั้ง " + str.tostring(entry, format.mintick) + " · กัน " + str.tostring(invalid, format.mintick) + " · เป้า " + str.tostring(target, format.mintick) + (pending * structure < 0 ? " · สวนโครงสร้าง" : ""), alert.freq_once_per_bar_close)
             else

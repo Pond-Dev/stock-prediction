@@ -1,0 +1,73 @@
+//@version=6
+// SMA Trend + ATR - strategy version of sma_atr_trend.pine. Same rules, same
+// defaults; this one places orders so the Strategy Tester does the accounting.
+// When the two disagree the Tester is right: it fills stops intrabar, the
+// indicator can only see the bar close.
+//
+// Rules
+//   LONG  on the bar that turns UP   (SMA5>15>20 and spread >= tangle x ATR)
+//   SHORT on the bar that turns DOWN
+//   SL = slMult x ATR from entry, TP = SL distance x rr, opposite signal reverses
+//
+// Cost is baked in: 0.125 USD per ounce per side = a 0.25 spread round trip,
+// roughly XAUUSD retail. Change commission_value to your broker's half-spread.
+// Without it the Tester reports a profit that the spread quietly eats: at the
+// old tangle=0.25 this rule fired 367 trades in 5 days for +6.71 gross, and
+// 367 round trips of spread is about -21.
+strategy("SMA Trend + ATR Strategy", shorttitle="SMA/ATR ST", overlay=true,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=10,
+     initial_capital=10000, currency=currency.USD, calc_on_every_tick=false,
+     pyramiding=0,
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.125,
+     slippage=0)
+
+int   len1   = input.int(5,  "SMA fast",   minval=1, group="SMA")
+int   len2   = input.int(15, "SMA mid",    minval=1, group="SMA")
+int   len3   = input.int(20, "SMA slow",   minval=1, group="SMA")
+int   atrLen = input.int(14, "ATR length", minval=1, group="ATR")
+float slMult = input.float(1.5, "Stop loss x ATR", minval=0.5, step=0.5, group="ATR")
+float rr     = input.float(1.5, "Take profit R:R", minval=0.5, step=0.5, group="ATR")
+float tangle = input.float(0.7,  "Sideway threshold x ATR", minval=0.0, step=0.05, group="ATR",
+     tooltip="SMA spread below this (in ATR) counts as sideway")
+bool  longOk  = input.bool(true, "Take longs",  group="Trades")
+bool  shortOk = input.bool(true, "Take shorts", group="Trades")
+
+float sma1 = ta.sma(close, len1)
+float sma2 = ta.sma(close, len2)
+float sma3 = ta.sma(close, len3)
+float atr  = ta.atr(atrLen)
+
+float spread   = math.max(sma1, sma2, sma3) - math.min(sma1, sma2, sma3)
+bool  spreadOk = spread >= tangle * atr
+bool  up   = sma1 > sma2 and sma2 > sma3 and spreadOk
+bool  down = sma1 < sma2 and sma2 < sma3 and spreadOk
+color tCol = up ? color.teal : down ? color.red : color.gray
+
+p2 = plot(sma2, "SMA 15", color.new(tCol, 0), 2)
+p3 = plot(sma3, "SMA 20", color.new(tCol, 30), 2)
+fill(p2, p3, color.new(tCol, 65), title="Trend ribbon")
+plot(sma1, "SMA 5", color.new(color.gray, 55), 1)
+
+bool flipUp   = up   and not up[1]
+bool flipDown = down and not down[1]
+
+// Risk is frozen at entry: the bracket must not slide with later ATR readings,
+// or the Tester reports stops that never existed.
+var float entryRisk = na
+if flipUp and longOk
+    entryRisk := slMult * atr
+    strategy.entry("L", strategy.long)
+if flipDown and shortOk
+    entryRisk := slMult * atr
+    strategy.entry("S", strategy.short)
+
+float avg = strategy.position_avg_price
+if strategy.position_size > 0
+    strategy.exit("L x", "L", stop=avg - entryRisk, limit=avg + entryRisk * rr)
+if strategy.position_size < 0
+    strategy.exit("S x", "S", stop=avg + entryRisk, limit=avg - entryRisk * rr)
+
+// ponytail: exits are SL / TP / opposite signal only. If you want to test
+// "close when the ribbon turns grey", add: if strategy.position_size != 0 and
+// not up and not down -> strategy.close_all(). It cuts drawdown and cuts winners
+// too - measure it, don't assume it.

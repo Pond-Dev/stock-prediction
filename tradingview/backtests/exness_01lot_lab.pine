@@ -1,0 +1,112 @@
+//@version=6
+// Experimental lab used for the 62 cases in exness_01lot_2026-09-12.md.
+// Early Cash-only trials used limit verification 0; later trials used 1 as below.
+strategy("SMA ATR Cash Sniper Lab", shorttitle="Cash Sniper", overlay=true,
+     initial_capital=10000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=10,
+     pyramiding=0, margin_long=10, margin_short=10,
+     calc_on_every_tick=false, calc_on_order_fills=false, process_orders_on_close=false,
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.125, slippage=20, backtest_fill_limits_assumption=1)
+float lots = input.float(0.1, "Exness lots (100 oz per lot)", minval=0.01, step=0.01)
+float riskCash = input.float(10, "Planned net SL USD", minval=3, step=5)
+float rr = input.float(0.5, "Net TP / SL ratio", minval=0.25, step=0.25)
+float tangle = input.float(0, "SMA spread x ATR", minval=0, step=0.1)
+string mode = input.string("Price reclaim", "Entry mode", options=["Trend flip", "Price reclaim", "SMA cross", "Momentum", "Mean revert", "Pullback limit", "Stretch fade"])
+int limitLen = input.int(5, "Limit SMA length", minval=1, maxval=20)
+string testPeriod = input.string("Calibration", "Test period", options=["All", "Calibration", "Validation", "Older"])
+string m5Filter = input.string("Off", "Closed M5 filter", options=["Off", "Aligned", "Slope"])
+string stopModel = input.string("Cash", "Stop model", options=["Cash", "ATR capped"])
+float atrMult = input.float(1.5, "ATR stop multiplier", minval=0.5, step=0.25)
+bool reverse = input.bool(false, "Reverse on opposite signal")
+int start = timestamp("Asia/Bangkok", 2026, 9, 7, 0, 0)
+int split = timestamp("Asia/Bangkok", 2026, 9, 10, 0, 0)
+bool inPeriod = switch testPeriod
+    "Calibration" => time >= start and time_close < split
+    "Validation" => time >= split
+    "Older" => time_close < start
+    => true
+if syminfo.currency != "USD" or syminfo.pointvalue != 1
+    runtime.error("Use a USD gold chart with point value 1, e.g. PYTH:XAUUSD")
+float qty = math.floor(lots * 100 / syminfo.mincontract) * syminfo.mincontract
+float tickCash = qty * syminfo.mintick * syminfo.pointvalue
+float fees = qty * 0.125 * 2
+int maxLossTicks = int(math.floor((riskCash - fees) / tickCash - 20))
+if qty <= 0 or maxLossTicks < 1
+    runtime.error("Planned SL must exceed estimated fees and stop slippage")
+float sma1 = ta.sma(close, 5)
+float sma2 = ta.sma(close, 15)
+float sma3 = ta.sma(close, 20)
+float atr = ta.atr(14)
+int lossTicks = stopModel == "ATR capped" ? math.max(1, int(math.round(atrMult * atr / syminfo.mintick))) : maxLossTicks
+float plannedLoss = (lossTicks + 20) * tickCash + fees
+float targetCash = (stopModel == "ATR capped" ? plannedLoss : riskCash) * rr
+int profitTicks = int(math.ceil((targetCash + fees) / tickCash))
+bool riskFits = lossTicks <= maxLossTicks
+float spread = math.max(sma1, sma2, sma3) - math.min(sma1, sma2, sma3)
+bool spreadOk = spread >= tangle * atr
+bool up = sma1 > sma2 and sma2 > sma3 and spreadOk
+bool down = sma1 < sma2 and sma2 < sma3 and spreadOk
+bool priceUp = ta.crossover(close, sma1)
+bool priceDown = ta.crossunder(close, sma1)
+bool maUp = ta.crossover(sma1, sma2)
+bool maDown = ta.crossunder(sma1, sma2)
+bool bandUp = ta.crossover(close, sma3 - 1.5 * atr)
+bool bandDown = ta.crossunder(close, sma3 + 1.5 * atr)
+[h1, h2, h3, h3Prev] = request.security(syminfo.tickerid, "5", [ta.sma(close, 5)[1], ta.sma(close, 15)[1], ta.sma(close, 20)[1], ta.sma(close, 20)[2]], lookahead=barmerge.lookahead_on)
+bool longGate = m5Filter == "Off" or (m5Filter == "Aligned" ? h1 > h2 and h2 > h3 : h3 > h3Prev)
+bool shortGate = m5Filter == "Off" or (m5Filter == "Aligned" ? h1 < h2 and h2 < h3 : h3 < h3Prev)
+bool stretchBuy = ta.crossunder(close, sma3 - 2.0 * atr)
+bool stretchSell = ta.crossover(close, sma3 + 2.0 * atr)
+float limitPrice = ta.sma(close, limitLen)
+bool buy = switch mode
+    "Stretch fade" => stretchBuy and sma1 < sma2
+    "Pullback limit" => up and close > sma1
+    "Price reclaim" => sma2 > sma3 and sma3 > sma3[3] and priceUp and spreadOk
+    "SMA cross" => maUp and sma2 > sma3 and spreadOk
+    "Momentum" => up and close > high[1]
+    "Mean revert" => bandUp and sma1 < sma2
+    => up and not up[1]
+bool sell = switch mode
+    "Stretch fade" => stretchSell and sma1 > sma2
+    "Pullback limit" => down and close < sma1
+    "Price reclaim" => sma2 < sma3 and sma3 < sma3[3] and priceDown and spreadOk
+    "SMA cross" => maDown and sma2 < sma3 and spreadOk
+    "Momentum" => down and close < low[1]
+    "Mean revert" => bandDown and sma1 > sma2
+    => down and not down[1]
+if barstate.isconfirmed and inPeriod
+    if strategy.position_size == 0
+        strategy.cancel_all()
+    if buy and longGate and riskFits and (strategy.position_size == 0 or (reverse and strategy.position_size < 0))
+        strategy.entry("L", strategy.long, qty=qty, limit=mode == "Pullback limit" ? limitPrice : na)
+        strategy.exit("L x", "L", loss=lossTicks, profit=profitTicks)
+    else if sell and shortGate and riskFits and (strategy.position_size == 0 or (reverse and strategy.position_size > 0))
+        strategy.entry("S", strategy.short, qty=qty, limit=mode == "Pullback limit" ? limitPrice : na)
+        strategy.exit("S x", "S", loss=lossTicks, profit=profitTicks)
+if not inPeriod
+    strategy.cancel_all()
+    strategy.close_all(comment="End test")
+color col = up ? color.teal : down ? color.red : color.gray
+p2 = plot(sma2, "SMA15", col, 2)
+p3 = plot(sma3, "SMA20", color.new(col, 30), 2)
+fill(p2, p3, color.new(col, 65))
+plot(sma1, "SMA5", color.new(color.gray, 55))
+var float heldBars = 0
+var int counted = 0
+if strategy.closedtrades > counted
+    for i = counted to strategy.closedtrades - 1
+        heldBars += strategy.closedtrades.exit_bar_index(i) - strategy.closedtrades.entry_bar_index(i)
+    counted := strategy.closedtrades
+var table info = table.new(position.top_right, 2, 6, bgcolor=color.new(color.black, 15))
+if barstate.islast
+    table.cell(info, 0, 0, "Lot / TV qty", text_color=color.white)
+    table.cell(info, 1, 0, str.tostring(lots) + " / " + str.tostring(qty), text_color=color.white)
+    table.cell(info, 0, 1, "Planned SL / TP USD", text_color=color.white)
+    table.cell(info, 1, 1, str.tostring(plannedLoss, "#.##") + " / " + str.tostring(targetCash, "#.##"), text_color=color.white)
+    table.cell(info, 0, 2, "SL / TP price distance", text_color=color.white)
+    table.cell(info, 1, 2, str.tostring(lossTicks * syminfo.mintick) + " / " + str.tostring(profitTicks * syminfo.mintick), text_color=color.white)
+    table.cell(info, 0, 3, "Estimated round-trip fees", text_color=color.white)
+    table.cell(info, 1, 3, str.tostring(fees), text_color=color.white)
+    table.cell(info, 0, 4, "ATR14", text_color=color.white)
+    table.cell(info, 1, 4, str.tostring(atr, format.mintick), text_color=color.white)
+    table.cell(info, 0, 5, "Average bars held", text_color=color.white)
+    table.cell(info, 1, 5, str.tostring(counted > 0 ? heldBars / counted : 0, "#.##"), text_color=color.white)

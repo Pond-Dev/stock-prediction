@@ -1,0 +1,106 @@
+//@version=6
+// Manual-trading setup indicator. Same risk/trigger math as sma_atr_trend_strategy.pine.
+// Shows every eligible trend flip: no broker position/fill emulation or manual-close tracking.
+// Last-setup guides are estimates, not live orders. Research results belong to the strategy.
+indicator("SMA ATR 0.1 Lot Setup", shorttitle="SMA/ATR 0.1", overlay=true)
+const float FEE_PER_UNIT = 0.125
+const int SLIPPAGE_TICKS = 20
+float lots = input.float(0.1, "Exness lots (100 oz per lot)", minval=0.01, step=0.01)
+float riskCash = input.float(20, "Max planned loss USD", minval=1, step=5,
+     tooltip="Includes assumed fees and stop slippage. Gaps can exceed this amount. ATR mode skips entries above this budget.")
+float rr = input.float(3, "Net TP / SL ratio", minval=0.25, step=0.25)
+string stopModel = input.string("ATR capped", "Stop model", options=["ATR capped", "Cash"],
+     tooltip="ATR capped: ATR sets SL; skip entries above the budget. Cash: fixed SL distance set by the budget.")
+float atrMult = input.float(1.5, "ATR stop multiplier", minval=0.5, step=0.25)
+float tangle = input.float(0.7, "SMA spread x ATR", minval=0, step=0.1)
+
+bool showBg = input.bool(false, "Background tint", group="Display")
+bool showTable = input.bool(true, "Info table", group="Display")
+bool showArrow = input.bool(true, "Confirmed setup arrows", group="Display")
+bool showLvl = input.bool(true, "Last setup Entry / SL / TP", group="Display",
+     tooltip="Frozen estimates from the latest eligible signal. Remain visible after price touches them; this indicator does not track your position.")
+if syminfo.currency != "USD" or syminfo.pointvalue != 1
+    runtime.error("Use a USD gold chart with pointvalue 1, e.g. PYTH:XAUUSD")
+if not timeframe.isminutes or timeframe.multiplier != 1
+    runtime.error("This indicator is designed for the 1 minute chart")
+float qty = math.floor(lots * 100 / syminfo.mincontract) * syminfo.mincontract
+float tickCash = qty * syminfo.mintick * syminfo.pointvalue
+float fees = qty * FEE_PER_UNIT * 2
+int maxLossTicks = int(math.floor((riskCash - fees) / tickCash - SLIPPAGE_TICKS))
+if qty <= 0 or maxLossTicks < 1
+    runtime.error("Loss budget must exceed assumed fees and stop slippage")
+
+float sma1 = ta.sma(close, 5)
+float sma2 = ta.sma(close, 15)
+float sma3 = ta.sma(close, 20)
+float atr = ta.atr(14)
+int lossTicks = stopModel == "ATR capped" ? math.max(1, int(math.round(atrMult * atr / syminfo.mintick))) : maxLossTicks
+float plannedLoss = (lossTicks + SLIPPAGE_TICKS) * tickCash + fees
+float targetCash = (stopModel == "ATR capped" ? plannedLoss : riskCash) * rr
+int profitTicks = int(math.ceil((targetCash + fees) / tickCash))
+bool riskFits = lossTicks <= maxLossTicks
+float spread = math.max(sma1, sma2, sma3) - math.min(sma1, sma2, sma3)
+bool up = sma1 > sma2 and sma2 > sma3 and spread >= tangle * atr
+bool down = sma1 < sma2 and sma2 < sma3 and spread >= tangle * atr
+
+// Unlike a strategy, a manual indicator must not suppress setups based on simulated positions.
+bool buy = barstate.isconfirmed and up and not up[1] and riskFits
+bool sell = barstate.isconfirmed and down and not down[1] and riskFits
+var float entry = na
+var float sl = na
+var float tp = na
+var float setupRisk = na
+var float setupReward = na
+var int setupTime = na
+var int setupBar = na
+var string side = "No setup"
+if buy or sell
+    float direction = buy ? 1 : -1
+    entry := close + direction * SLIPPAGE_TICKS * syminfo.mintick
+    sl := entry - direction * lossTicks * syminfo.mintick
+    tp := entry + direction * profitTicks * syminfo.mintick
+    setupRisk := plannedLoss
+    setupReward := profitTicks * tickCash - fees
+    setupTime := time
+    setupBar := bar_index
+    side := buy ? "BUY" : "SELL"
+
+color col = up ? color.teal : down ? color.red : color.gray
+plot(sma1, "SMA5", color.new(color.gray, 55))
+p2 = plot(sma2, "SMA15", col, 2)
+p3 = plot(sma3, "SMA20", color.new(col, 30), 2)
+fill(p2, p3, color.new(col, 65), title="Trend ribbon")
+bgcolor(showBg ? color.new(col, 92) : na)
+plotshape(showArrow and buy, "Buy setup", shape.labelup, location.belowbar, color.teal, text="BUY", textcolor=color.white, size=size.tiny)
+plotshape(showArrow and sell, "Sell setup", shape.labeldown, location.abovebar, color.red, text="SELL", textcolor=color.white, size=size.tiny)
+alertcondition(buy, "SMA BUY setup", "Confirmed SMA 5/15/20 BUY setup within configured risk budget. Entry is an estimate.")
+alertcondition(sell, "SMA SELL setup", "Confirmed SMA 5/15/20 SELL setup within configured risk budget. Entry is an estimate.")
+
+var line entryLine = na
+var line slLine = na
+var line tpLine = na
+if barstate.islast
+    line.delete(entryLine)
+    line.delete(slLine)
+    line.delete(tpLine)
+    if showLvl and not na(setupTime)
+        entryLine := line.new(setupTime, entry, time_close, entry, xloc=xloc.bar_time, extend=extend.right, color=color.gray)
+        slLine := line.new(setupTime, sl, time_close, sl, xloc=xloc.bar_time, extend=extend.right, color=color.red, width=2)
+        tpLine := line.new(setupTime, tp, time_close, tp, xloc=xloc.bar_time, extend=extend.right, color=color.teal, width=2)
+
+var table info = table.new(position.top_right, 2, 7, bgcolor=color.new(color.black, 15))
+if barstate.islast and showTable
+    table.cell(info, 0, 0, "Lot / risk budget", text_color=color.white)
+    table.cell(info, 1, 0, str.tostring(lots) + " / $" + str.tostring(riskCash), text_color=color.white)
+    table.cell(info, 0, 1, "Current trend / risk", text_color=color.white)
+    table.cell(info, 1, 1, (up ? "UP" : down ? "DOWN" : "SIDE") + (na(atr) ? " / WARMUP" : riskFits ? " / OK" : " / SKIP"), text_color=col)
+    table.cell(info, 0, 2, "Last setup (not position)", text_color=color.white)
+    table.cell(info, 1, 2, side + (na(setupBar) ? "" : " / " + str.tostring(bar_index - setupBar) + " bars ago"), text_color=color.white)
+    table.cell(info, 0, 3, "Entry estimate", text_color=color.white)
+    table.cell(info, 1, 3, na(entry) ? "-" : str.tostring(entry, format.mintick), text_color=color.white)
+    table.cell(info, 0, 4, "SL / planned loss", text_color=color.red)
+    table.cell(info, 1, 4, na(sl) ? "-" : str.tostring(sl, format.mintick) + " / $" + str.tostring(setupRisk, "#.##"), text_color=color.white)
+    table.cell(info, 0, 5, "TP / planned net profit", text_color=color.teal)
+    table.cell(info, 1, 5, na(tp) ? "-" : str.tostring(tp, format.mintick) + " / $" + str.tostring(setupReward, "#.##"), text_color=color.white)
+    table.cell(info, 0, 6, "Cost assumption / round trip", text_color=color.white)
+    table.cell(info, 1, 6, "$" + str.tostring(fees) + " + slippage", text_color=color.white)

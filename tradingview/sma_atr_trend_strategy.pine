@@ -1,0 +1,103 @@
+//@version=6
+// Research candidate. See backtests/exness_01lot_2026-09-12.md.
+// Exness XAUUSD: 1 lot = 100 oz. PYTH prices/costs are proxies for broker execution.
+// Keep these constants and Strategy Properties costs equal when changing assumptions.
+const float FEE_PER_UNIT = 0.125
+const int SLIPPAGE_TICKS = 20
+strategy("SMA ATR 0.1 Lot Sniper Research", shorttitle="SMA Sniper 0.1", overlay=true,
+     initial_capital=10000, currency=currency.USD, default_qty_type=strategy.fixed, default_qty_value=10,
+     pyramiding=0, margin_long=10, margin_short=10,
+     calc_on_every_tick=false, calc_on_order_fills=false, process_orders_on_close=false,
+     commission_type=strategy.commission.cash_per_contract, commission_value=FEE_PER_UNIT,
+     slippage=SLIPPAGE_TICKS, backtest_fill_limits_assumption=1)
+
+float lots = input.float(0.1, "Exness lots (100 oz per lot)", minval=0.01, step=0.01)
+float riskCash = input.float(20, "Max planned loss USD", minval=1, step=5,
+     tooltip="Includes assumed fees and stop slippage. Gaps can exceed this amount. ATR mode skips entries above this budget.")
+float rr = input.float(3, "Net TP / SL ratio", minval=0.25, step=0.25)
+string stopModel = input.string("ATR capped", "Stop model", options=["ATR capped", "Cash"],
+     tooltip="ATR capped: ATR sets SL; skip entries above the budget. Cash: fixed SL distance set by the budget.")
+float atrMult = input.float(1.5, "ATR stop multiplier", minval=0.5, step=0.25)
+float tangle = input.float(0.7, "SMA spread x ATR", minval=0, step=0.1)
+bool reverse = input.bool(true, "Reverse on opposite signal",
+     tooltip="Backtest closes and reverses on an eligible opposite signal. Manual exits give different results.")
+int startTime = input.time(timestamp("01 Jan 2020 00:00 +0000"), "From (inclusive)")
+int endTime = input.time(timestamp("01 Jan 2099 00:00 +0000"), "To (exclusive)")
+if startTime >= endTime
+    runtime.error("From must be before To")
+if syminfo.currency != "USD" or syminfo.pointvalue != 1
+    runtime.error("Use a USD gold chart with pointvalue 1, e.g. PYTH:XAUUSD")
+if not timeframe.isminutes or timeframe.multiplier != 1
+    runtime.error("This research strategy is designed for the 1 minute chart")
+bool inPeriod = time >= startTime and time_close < endTime
+float qty = math.floor(lots * 100 / syminfo.mincontract) * syminfo.mincontract
+float tickCash = qty * syminfo.mintick * syminfo.pointvalue
+float fees = qty * FEE_PER_UNIT * 2
+int maxLossTicks = int(math.floor((riskCash - fees) / tickCash - SLIPPAGE_TICKS))
+if qty <= 0 or maxLossTicks < 1
+    runtime.error("Loss budget must exceed assumed fees and stop slippage")
+
+float sma1 = ta.sma(close, 5)
+float sma2 = ta.sma(close, 15)
+float sma3 = ta.sma(close, 20)
+float atr = ta.atr(14)
+int lossTicks = stopModel == "ATR capped" ? math.max(1, int(math.round(atrMult * atr / syminfo.mintick))) : maxLossTicks
+float plannedLoss = (lossTicks + SLIPPAGE_TICKS) * tickCash + fees
+float targetCash = (stopModel == "ATR capped" ? plannedLoss : riskCash) * rr
+int profitTicks = int(math.ceil((targetCash + fees) / tickCash))
+bool riskFits = lossTicks <= maxLossTicks
+float spread = math.max(sma1, sma2, sma3) - math.min(sma1, sma2, sma3)
+bool up = sma1 > sma2 and sma2 > sma3 and spread >= tangle * atr
+bool down = sma1 < sma2 and sma2 < sma3 and spread >= tangle * atr
+bool buy = barstate.isconfirmed and inPeriod and up and not up[1] and riskFits and (strategy.position_size == 0 or (reverse and strategy.position_size < 0))
+bool sell = barstate.isconfirmed and inPeriod and down and not down[1] and riskFits and (strategy.position_size == 0 or (reverse and strategy.position_size > 0))
+var int frozenSL = na
+var int frozenTP = na
+// Relative brackets are submitted with the entry and frozen until the next entry.
+if barstate.isconfirmed and inPeriod
+    if strategy.position_size == 0
+        strategy.cancel_all()
+    if buy
+        strategy.entry("L", strategy.long, qty=qty)
+        strategy.exit("L x", "L", loss=lossTicks, profit=profitTicks)
+    else if sell
+        strategy.entry("S", strategy.short, qty=qty)
+        strategy.exit("S x", "S", loss=lossTicks, profit=profitTicks)
+    if buy or sell
+        frozenSL := lossTicks
+        frozenTP := profitTicks
+if not inPeriod
+    strategy.cancel_all()
+    strategy.close_all(comment="End test")
+
+color col = up ? color.teal : down ? color.red : color.gray
+p2 = plot(sma2, "SMA15", col, 2)
+p3 = plot(sma3, "SMA20", color.new(col, 30), 2)
+fill(p2, p3, color.new(col, 65))
+plot(sma1, "SMA5", color.new(color.gray, 55))
+plotshape(buy, "Buy signal", shape.triangleup, location.belowbar, color.teal, text="BUY", size=size.tiny)
+plotshape(sell, "Sell signal", shape.triangledown, location.abovebar, color.red, text="SELL", size=size.tiny)
+// On the signal bar guides use close +/- assumed slippage; after fill use the simulated entry.
+float direction = buy ? 1 : sell ? -1 : math.sign(strategy.position_size)
+float entryGuide = buy or sell ? close + direction * SLIPPAGE_TICKS * syminfo.mintick : strategy.position_size != 0 ? strategy.position_avg_price : na
+plot(entryGuide, "Entry (estimate until filled)", color.gray, style=plot.style_linebr)
+plot(entryGuide - direction * frozenSL * syminfo.mintick, "SL", color.red, 2, plot.style_linebr)
+plot(entryGuide + direction * frozenTP * syminfo.mintick, "TP", color.lime, 2, plot.style_linebr)
+var float heldBars = 0
+var int counted = 0
+if strategy.closedtrades > counted
+    for i = counted to strategy.closedtrades - 1
+        heldBars += strategy.closedtrades.exit_bar_index(i) - strategy.closedtrades.entry_bar_index(i)
+    counted := strategy.closedtrades
+var table info = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 15))
+if barstate.islast
+    table.cell(info, 0, 0, "Lot / TV qty", text_color=color.white)
+    table.cell(info, 1, 0, str.tostring(lots) + " / " + str.tostring(qty), text_color=color.white)
+    table.cell(info, 0, 1, "Risk budget USD", text_color=color.white)
+    table.cell(info, 1, 1, str.tostring(riskCash), text_color=color.white)
+    table.cell(info, 0, 2, "New entry SL / TP USD", text_color=color.white)
+    table.cell(info, 1, 2, str.tostring(plannedLoss, "#.##") + " / " + str.tostring(targetCash, "#.##"), text_color=color.white)
+    table.cell(info, 0, 3, "New entry risk", text_color=color.white)
+    table.cell(info, 1, 3, riskFits ? "Within budget" : "SKIP: over budget", text_color=riskFits ? color.teal : color.orange)
+    table.cell(info, 0, 4, "Average bars held", text_color=color.white)
+    table.cell(info, 1, 4, str.tostring(counted > 0 ? heldBars / counted : 0, "#.##"), text_color=color.white)

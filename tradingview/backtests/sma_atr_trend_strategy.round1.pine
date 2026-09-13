@@ -1,0 +1,64 @@
+//@version=6
+// Confirmed-bar SMA 5/15/20 trend entries with ATR brackets.
+// Tested on PYTH:XAUUSD M1, 2026-09-07 through 2026-09-12.
+// See backtests/sma_atr_2026-09-12.md for every trial and cost assumptions.
+// Costs below are test assumptions, not a verified broker quote:
+// USD 0.125 per contract per side, plus 20 ticks of market/stop slippage.
+// The companion indicator has separate settings and is not this backtest.
+strategy("SMA Trend + ATR Strategy", shorttitle="SMA/ATR ST", overlay=true,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=10,
+     initial_capital=10000, currency=currency.USD, calc_on_every_tick=false,
+     pyramiding=0, calc_on_order_fills=false, process_orders_on_close=false,
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.125,
+     slippage=20)
+
+int   len1   = input.int(5,  "SMA fast",   minval=1, group="SMA")
+int   len2   = input.int(15, "SMA mid",    minval=1, group="SMA")
+int   len3   = input.int(20, "SMA slow",   minval=1, group="SMA")
+int   atrLen = input.int(14, "ATR length", minval=1, group="ATR")
+float slMult = input.float(1.5, "Stop loss x ATR", minval=0.5, step=0.25, group="ATR")
+float rr     = input.float(3.0, "Take profit R:R", minval=0.5, step=0.25, group="ATR")
+float tangle = input.float(0.7,  "Sideway threshold x ATR", minval=0.0, step=0.05, group="ATR",
+     tooltip="SMA spread below this (in ATR) counts as sideway")
+bool  longOk  = input.bool(true, "Take longs",  group="Trades")
+bool  shortOk = input.bool(true, "Take shorts", group="Trades")
+int startTime = input.time(timestamp("01 Jan 2020 00:00 +0000"), "From (inclusive)", group="Backtest")
+int endTime = input.time(timestamp("01 Jan 2099 00:00 +0000"), "To (exclusive)", group="Backtest")
+if startTime >= endTime
+    runtime.error("Backtest From must be before To")
+bool inPeriod = time >= startTime and time_close < endTime
+
+float sma1 = ta.sma(close, len1)
+float sma2 = ta.sma(close, len2)
+float sma3 = ta.sma(close, len3)
+float atr  = ta.atr(atrLen)
+
+float spread   = math.max(sma1, sma2, sma3) - math.min(sma1, sma2, sma3)
+bool  spreadOk = spread >= tangle * atr
+bool  up   = sma1 > sma2 and sma2 > sma3 and spreadOk
+bool  down = sma1 < sma2 and sma2 < sma3 and spreadOk
+color tCol = up ? color.teal : down ? color.red : color.gray
+
+p2 = plot(sma2, "SMA mid", color.new(tCol, 0), 2)
+p3 = plot(sma3, "SMA slow", color.new(tCol, 30), 2)
+fill(p2, p3, color.new(tCol, 65), title="Trend ribbon")
+plot(sma1, "SMA fast", color.new(color.gray, 55), 1)
+
+bool flipUp   = up   and not up[1]
+bool flipDown = down and not down[1]
+
+// Submit relative brackets WITH the entry, protecting its first bar.
+// loss/profit use ticks from the actual fill, including entry slippage.
+// Same-direction signals cannot overwrite the open trade's frozen bracket.
+int riskTicks = math.max(1, int(math.round(slMult * atr / syminfo.mintick)))
+int rewardTicks = math.max(1, int(math.round(riskTicks * rr)))
+if barstate.isconfirmed and inPeriod
+    if flipUp and longOk and strategy.position_size <= 0
+        strategy.entry("L", strategy.long)
+        strategy.exit("L x", "L", loss=riskTicks, profit=rewardTicks)
+    if flipDown and shortOk and strategy.position_size >= 0
+        strategy.entry("S", strategy.short)
+        strategy.exit("S x", "S", loss=riskTicks, profit=rewardTicks)
+if not inPeriod
+    strategy.cancel_all()
+    strategy.close_all(comment="End test")
