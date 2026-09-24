@@ -1,0 +1,158 @@
+//@version=6
+indicator("Gold Fib Zone M5", shorttitle="Fib Zone", overlay=true, max_bars_back=500, max_boxes_count=300, max_labels_count=200)
+
+int s = input.int(3, "Swing confirmation bars (left/right)", minval=2, maxval=10)
+float minLeg = input.float(3.0, "Min leg size / ATR(14)", minval=1.0, maxval=10.0, step=0.5)
+
+float atr = ta.sma(ta.tr(true), 14)
+float ema200 = ta.ema(close, 200)
+float sma200 = ta.sma(close, 200)
+bool up = close > math.max(ema200, sma200)
+bool dn = close < math.min(ema200, sma200)
+float ph = ta.pivothigh(high, s, s)
+float pl = ta.pivotlow(low, s, s)
+float hiAfter = ta.highest(high, s)
+float loAfter = ta.lowest(low, s)
+
+color bull = #22AB94
+color bear = #F23645
+color muted = #787B86
+
+var int phBar = na
+var int plBar = na
+var int st = 0
+var int side = 0
+var float entry = na
+var float far = na
+var float sl = na
+var float tp = na
+var float slPts = na
+var int born = na
+var int fillBar = na
+var box riskBox = na
+var box rewBox = na
+var label lb = na
+var label slTag = na
+var label tpTag = na
+var string zoneTxt = ""
+var string levelTxt = ""
+
+f_close(string result, color c, bool filled) =>
+    if filled
+        box.set_right(riskBox, bar_index)
+        box.set_right(rewBox, bar_index)
+    else
+        box.delete(riskBox)
+        box.delete(rewBox)
+    label.delete(slTag)
+    label.delete(tpTag)
+    label.set_x(lb, bar_index)
+    label.set_text(lb, result)
+    label.set_color(lb, c)
+    label.set_size(lb, filled ? size.small : size.tiny)
+
+bool busy = st == 2
+bool touched = false
+if st == 2
+    bool slHit = side == -1 ? high >= sl : low <= sl
+    bool tpHit = bar_index > fillBar and (side == -1 ? low <= tp : high >= tp)
+    if slHit
+        f_close("✕ SL  -" + str.tostring(slPts, "#.#") + " pts", bear, true)
+        st := 0
+    else if tpHit
+        f_close("✓ TP  +" + str.tostring(math.abs(tp - entry), "#.#") + " pts", bull, true)
+        st := 0
+    else if bar_index - fillBar >= 48
+        float pts = (close - entry) * side
+        f_close("4h exit  " + (pts >= 0 ? "+" : "") + str.tostring(pts, "#.#") + " pts", muted, true)
+        st := 0
+else if st == 1
+    if side == -1 ? low < tp : high > tp
+        f_close("cancelled", muted, false)
+        st := 0
+    else if side == -1 ? high >= entry : low <= entry
+        st := 2
+        fillBar := bar_index
+        touched := true
+        busy := true
+        label.set_text(lb, str.replace(label.get_text(lb), "LIMIT", "FILLED"))
+        if side == -1 ? high >= sl : low <= sl
+            f_close("✕ SL  -" + str.tostring(slPts, "#.#") + " pts", bear, true)
+            st := 0
+    else if bar_index - born >= 24
+        f_close("expired", muted, false)
+        st := 0
+
+int newSide = 0
+float nE = na
+float nFar = na
+float nSl = na
+float nTp = na
+if not na(ph)
+    int p = bar_index - s
+    if not busy and up and not na(plBar) and plBar < p
+        float lo = low[s]
+        for j = s to math.min(bar_index - plBar, 400)
+            lo := math.min(lo, low[j])
+        float leg = ph - lo
+        if leg >= minLeg * atr and loAfter > ph - 0.618 * leg
+            newSide := 1
+            nE := ph - 0.618 * leg
+            nFar := ph - 0.71 * leg
+            nSl := lo - 0.1 * atr
+            nTp := ph
+    phBar := p
+if not na(pl)
+    int p = bar_index - s
+    if not busy and dn and not na(phBar) and phBar < p
+        float hi = high[s]
+        for j = s to math.min(bar_index - phBar, 400)
+            hi := math.max(hi, high[j])
+        float leg = hi - pl
+        if leg >= minLeg * atr and hiAfter < pl + 0.618 * leg
+            newSide := -1
+            nE := pl + 0.618 * leg
+            nFar := pl + 0.71 * leg
+            nSl := hi + 0.1 * atr
+            nTp := pl
+    plBar := p
+
+if newSide != 0
+    if st == 1
+        f_close("replaced", muted, false)
+    st := 1
+    side := newSide
+    entry := nE
+    far := nFar
+    sl := nSl
+    tp := nTp
+    born := bar_index
+    slPts := math.abs(entry - sl)
+    color c = side == 1 ? bull : bear
+    string sd = side == 1 ? "BUY" : "SELL"
+    string rr = str.tostring(math.abs(tp - entry) / slPts, "#.#")
+    zoneTxt := sd + " zone " + str.tostring(math.min(entry, far), "0.00") + " - " + str.tostring(math.max(entry, far), "0.00")
+    levelTxt := "SL " + str.tostring(sl, "0.00") + " (" + str.tostring(slPts, "#.#") + " pts)   TP " + str.tostring(tp, "0.00") + "   R:R 1:" + rr
+    rewBox := box.new(bar_index, math.max(entry, tp), bar_index + 12, math.min(entry, tp), border_color=color.new(bull, 100), bgcolor=color.new(bull, 90))
+    riskBox := box.new(bar_index, math.max(entry, sl), bar_index + 12, math.min(entry, sl), border_color=color.new(bear, 100), bgcolor=color.new(bear, 90))
+    lb := label.new(bar_index + 12, entry, sd + " LIMIT  " + str.tostring(entry, "0.00"), style=label.style_label_left, color=c, textcolor=color.white, size=size.small, text_formatting=text.format_bold)
+    slTag := label.new(bar_index + 12, sl, "SL  " + str.tostring(sl, "0.00") + "   −" + str.tostring(slPts, "#.#"), style=label.style_label_left, color=bear, textcolor=color.white, size=size.small)
+    tpTag := label.new(bar_index + 12, tp, "TP  " + str.tostring(tp, "0.00") + "   +" + str.tostring(math.abs(tp - entry), "#.#") + " · " + rr + "R", style=label.style_label_left, color=bull, textcolor=color.white, size=size.small)
+    alert("Fib Zone | " + syminfo.tickerid + " | new " + zoneTxt + " | " + levelTxt, alert.freq_once_per_bar_close)
+
+if touched
+    alert("Fib Zone | " + syminfo.tickerid + " | price reached the " + zoneTxt + " | " + levelTxt + " | " + str.format_time(timenow, "HH:mm", "Asia/Bangkok") + " Bangkok", alert.freq_once_per_bar)
+
+if st != 0
+    int x = bar_index + 12
+    box.set_right(riskBox, x)
+    box.set_right(rewBox, x)
+    label.set_x(lb, x)
+    label.set_x(slTag, x)
+    label.set_x(tpTag, x)
+
+var color lineC = muted
+lineC := up ? bull : dn ? bear : lineC
+plot(ema200, "EMA 200 glow", color=color.new(lineC, 90), linewidth=6, display=display.pane, editable=false)
+plot(ema200, "EMA 200", color=lineC, linewidth=2)
+plot(sma200, "SMA 200", color=color.new(lineC, 45), linewidth=1)
