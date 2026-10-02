@@ -1,20 +1,11 @@
 // This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
 // © LuxAlgo
 // Modified 2026-10-01: confirmed events, causal MTF FVG, consistent zone lifecycle.
+// Modified 2026-10-02: structure-aware partial targets, ratcheting stop, post-target structure exits.
 // Derivative under the same CC BY-NC-SA 4.0 license. No performance claims.
-// Entry rules: confirmed structure break -> retest/reclaim, filtered by built-in Supertrend.
-// Supertrend method: https://www.tradingview.com/support/solutions/43000634738-supertrend/
-// Defaults are an unoptimized research baseline. Entries use standard time-based candles on the selected chart timeframe.
-// Manual chart indicator. Entry is the signal-close reference, not an execution price.
-// Fixed guides stop extending on a later confirmed SL/TP2 touch or plan expiry; recent ended plans remain visible.
-// Same-candle SL/target touch order is unknown. No fills, PnL or backtest accounting.
-// The separate gold_smc_entries.pine strategy owns execution and performance simulation.
 
 //@version=5
 indicator('Gold SMC Signals [LuxAlgo derivative]', 'Gold SMC Signals', overlay = true, max_bars_back = 2000, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
-//---------------------------------------------------------------------------------------------------------------------}
-//CONSTANTS & STRINGS & INPUTS
-//---------------------------------------------------------------------------------------------------------------------{
 BULLISH_LEG                     = 1
 BEARISH_LEG                     = 0
 
@@ -144,43 +135,30 @@ equilibriumZoneColorInput       = input.color(  GRAY,       'Equilibrium Zone', 
 discountZoneColorInput          = input.color(  GREEN,      'Discount Zone',            group = ZONES_GROUP)
 
 
-// A single closed-bar entry model; drawing switches never change signal detection.
 ENTRY_GROUP = 'จุดซื้อขายและ SL/TP'
 entryEnabledInput = input.bool(true, 'เปิดสัญญาณ BUY / SELL', group = ENTRY_GROUP)
 entryAtrLengthInput = input.int(14, 'ระยะคำนวณความผันผวน (ATR)', minval = 2, maxval = 100, group = ENTRY_GROUP)
 entryTrendFactorInput = input.float(3.0, 'ความไวแนวโน้ม (ค่ายิ่งมากยิ่งช้า)', minval = 1.0, maxval = 8.0, step = 0.25, group = ENTRY_GROUP)
 entryExpiryInput = input.int(12, 'รอทดสอบระดับไม่เกิน (แท่ง)', minval = 1, maxval = 48, group = ENTRY_GROUP)
 entryHoldInput = input.int(48, 'อายุแผนหลังสัญญาณ (แท่ง)', minval = 2, maxval = 288, group = ENTRY_GROUP, tooltip = 'นับตามไทม์เฟรมที่เปิด เช่น 48 แท่งบน 5 นาที = 4 ชั่วโมง แผนหยุดเมื่อแท่งครบอายุปิด')
-entryRewardInput = input.float(2.0, 'เป้า TP2 (เท่าของความเสี่ยง)', minval = 1.25, maxval = 5.0, step = 0.25, group = ENTRY_GROUP)
-entryHistoryInput = input.int(3, 'เก็บกล่อง SL/TP ที่จบแล้ว (แผน)', minval = 0, maxval = 10, group = ENTRY_GROUP, tooltip = 'เก็บราคาเข้า กล่องแดงถึง SL และกล่องเขียวถึง TP2 ของแผนล่าสุด ตั้ง 0 เพื่อซ่อนแผนที่จบ แผนปัจจุบันยังแสดงเสมอ สคริปต์ติดตามราคา ไม่ได้อ่านออเดอร์จากโบรกเกอร์')
+entryRewardInput = input.float(2.0, 'เพดาน TP2 (R)', minval = 1.25, maxval = 5.0, step = 0.25, group = ENTRY_GROUP)
+entryRunnerRewardInput = input.float(3.0, 'เพดาน TP3 (R ต้องมากกว่า TP2)', minval = 1.5, maxval = 10.0, step = 0.25, group = ENTRY_GROUP, tooltip = 'เลือกแนวรับต้านที่ยืนยันแล้วก่อนถึงเพดาน 1R / TP2 / TP3 หากไม่มีระดับใช้เพดาน R ล็อกเป้าตอนเข้า ไม่เลื่อนหนีราคา')
+entryMinRewardInput = input.float(0.75, 'ระยะ TP1 ขั้นต่ำ (R)', minval = 0.25, maxval = 1.0, step = 0.05, group = ENTRY_GROUP, tooltip = 'ข้ามจังหวะเมื่อแนวรับต้านแรกใกล้กว่าค่านี้ R อิงระยะ SL เริ่มต้น ไม่รวมค่าธรรมเนียมและ slippage')
+entryStopBufferInput = input.float(0.20, 'ระยะ SL นอกโครงสร้าง (ATR)', minval = 0.05, maxval = 1.0, step = 0.05, group = ENTRY_GROUP)
+entryTp1PercentInput = input.int(40, 'แบ่งปิด TP1 (% ของไม้เริ่มต้น)', minval = 1, maxval = 98, group = ENTRY_GROUP)
+entryTp2PercentInput = input.int(30, 'แบ่งปิด TP2 (% ของไม้เริ่มต้น)', minval = 1, maxval = 98, group = ENTRY_GROUP, tooltip = 'TP3 ใช้ส่วนที่เหลือ TP1 + TP2 ต้องน้อยกว่า 100 เป็นแผนแบ่งไม้ ไม่ได้ส่งคำสั่งโบรกเกอร์')
+entryBreakExitInput = input.bool(true, 'หลัง TP1 ออกเมื่อปิดเสียแนวรับ/ต้าน', group = ENTRY_GROUP, tooltip = 'BUY ปิดต่ำกว่าแนวรับคุ้มครอง / SELL ปิดสูงกว่าแนวต้านคุ้มครอง ออกส่วนที่เหลือแล้วรอจังหวะใหม่ ไม่กลับฝั่งทันที')
+entryHistoryInput = input.int(3, 'เก็บกล่อง SL/TP ที่จบแล้ว (แผน)', minval = 0, maxval = 10, group = ENTRY_GROUP, tooltip = 'กล่องแดงคือความเสี่ยงเริ่มต้น กล่องเขียวถึง TP3 เส้น SL คือระดับล่าสุด ตั้ง 0 เพื่อซ่อนแผนที่จบ สคริปต์ติดตามราคา ไม่ได้อ่านออเดอร์จากโบรกเกอร์')
 entryShowTrendInput = input.bool(false, 'แสดงเส้นแนวโน้ม', group = ENTRY_GROUP)
 entryShowPanelInput = input.bool(true, 'แสดงตารางช่วยตัดสินใจ', group = ENTRY_GROUP)
 entryAlertsInput = input.bool(true, 'แจ้ง BUY / SELL พร้อมราคา', group = ENTRY_GROUP, tooltip = 'สร้าง Alert แบบ Any alert() function call เพื่อรับ BUY/SELL พร้อมจุดเข้า SL และ TP หลังแท่งปิด')
+entryManagementAlertsInput = input.bool(true, 'แจ้ง TP / เลื่อน SL / จบแผน', group = ENTRY_GROUP, tooltip = 'ใช้ Any alert() function call แจ้งเมื่อแท่งปิด รวมทุกเหตุการณ์ในแท่งเดียว SL ใหม่ใช้ตั้งแต่แท่งถัดไป')
+entrySelfCheckInput = input.bool(false, 'ตรวจ logic SL/TP (Self-check)', group = ENTRY_GROUP, tooltip = 'รันทดสอบกรณี BUY/SELL, หลาย TP, SL ชน TP, Breakdown และ SL ไม่ถอย หากผิดจะหยุดด้วย runtime error')
 entryWatchInput = input.bool(true, 'แสดงจังหวะที่กำลังรอยืนยัน', group = ENTRY_GROUP, tooltip = 'ป้ายสีส้มคือจังหวะที่กำลังรอ อาจเปลี่ยนหรือหายก่อนแท่งปิด เข้าเงื่อนไขจริงเมื่อมีป้าย BUY/SELL ยืนยันแล้ว')
 
 entryDecisionLevelsInput = input.bool(true, 'แสดงระดับสำคัญล่าสุด', group = ENTRY_GROUP, tooltip = 'แสดงโครงสร้างล่าสุด โซนรับต้านที่ใกล้ที่สุด และราคาที่ทำให้ยกเลิกแผน ตัวเลขสีส้มเป็นค่าประเมินก่อนยืนยัน')
 decisionContextEnabled = entryShowPanelInput or entryDecisionLevelsInput
 
-//---------------------------------------------------------------------------------------------------------------------}
-//DATA STRUCTURES & VARIABLES
-//---------------------------------------------------------------------------------------------------------------------{
-// @type                            UDT representing alerts as bool fields
-// @field internalBullishBOS        internal structure custom alert
-// @field internalBearishBOS        internal structure custom alert
-// @field internalBullishCHoCH      internal structure custom alert
-// @field internalBearishCHoCH      internal structure custom alert
-// @field swingBullishBOS           swing structure custom alert
-// @field swingBearishBOS           swing structure custom alert
-// @field swingBullishCHoCH         swing structure custom alert
-// @field swingBearishCHoCH         swing structure custom alert
-// @field internalBullishOrderBlock internal order block custom alert
-// @field internalBearishOrderBlock internal order block custom alert
-// @field swingBullishOrderBlock    swing order block custom alert
-// @field swingBearishOrderBlock    swing order block custom alert
-// @field equalHighs                equal high low custom alert
-// @field equalLows                 equal high low custom alert
-// @field bullishFairValueGap       fair value gap custom alert
-// @field bearishFairValueGap       fair value gap custom alert
 type alerts
     bool internalBullishBOS         = false
     bool internalBearishBOS         = false
@@ -199,13 +177,6 @@ type alerts
     bool bullishFairValueGap        = false
     bool bearishFairValueGap        = false
 
-// @type                            UDT representing last swing extremes (top & bottom)
-// @field top                       last top swing price
-// @field bottom                    last bottom swing price
-// @field barTime                   last swing bar time
-// @field barIndex                  last swing bar index
-// @field lastTopTime               last top swing time
-// @field lastBottomTime            last bottom swing time
 type trailingExtremes
     float top
     float bottom
@@ -214,12 +185,6 @@ type trailingExtremes
     int lastTopTime
     int lastBottomTime
 
-// @type                            UDT representing Fair Value Gaps
-// @field top                       top price
-// @field bottom                    bottom price
-// @field bias                      bias (BULLISH or BEARISH)
-// @field topBox                    top box
-// @field bottomBox                 bottom box
 type fairValueGap
     float top
     float bottom
@@ -227,24 +192,13 @@ type fairValueGap
     box topBox
     box bottomBox
 
-// @type                            UDT representing trend bias
-// @field bias                      BULLISH or BEARISH
 type trend
     int bias    
 
-// @type                            UDT representing Equal Highs Lows display
-// @field l_ine                     displayed line
-// @field l_abel                    displayed label
 type equalDisplay
     line l_ine      = na
     label l_abel    = na
 
-// @type                            UDT representing a pivot point (swing point) 
-// @field currentLevel              current price level
-// @field lastLevel                 last price level
-// @field crossed                   true if price level is crossed
-// @field barTime                   bar time
-// @field barIndex                  bar index    
 type pivot
     float currentLevel
     float lastLevel
@@ -252,79 +206,43 @@ type pivot
     int barTime     = time
     int barIndex    = bar_index
 
-// @type                            UDT representing an order block
-// @field barHigh                   bar high
-// @field barLow                    bar low
-// @field barTime                   bar time
-// @field bias                      BULLISH or BEARISH
 type orderBlock
     float barHigh
     float barLow
     int barTime    
     int bias
 
-// @variable                        current swing pivot high    
 var pivot swingHigh                 = pivot.new(na,na,false)
-// @variable                        current swing pivot low
 var pivot swingLow                  = pivot.new(na,na,false)
-// @variable                        current internal pivot high
 var pivot internalHigh              = pivot.new(na,na,false)
-// @variable                        current internal pivot low
 var pivot internalLow               = pivot.new(na,na,false)
-// @variable                        current equal high pivot
 var pivot equalHigh                 = pivot.new(na,na,false)
-// @variable                        current equal low pivot
 var pivot equalLow                  = pivot.new(na,na,false)
-// @variable                        swing trend bias
 var trend swingTrend                = trend.new(0)
-// @variable                        internal trend bias
 var trend internalTrend             = trend.new(0)
-// @variable                        equal high display
 var equalDisplay equalHighDisplay   = equalDisplay.new()
-// @variable                        equal low display
 var equalDisplay equalLowDisplay    = equalDisplay.new()
-// @variable                        storage for fairValueGap UDTs
 var array<fairValueGap> fairValueGaps = array.new<fairValueGap>()
-// Eligibility is separate from price: rejected candles never become inverted zones.
 var array<bool> orderBlockEligible = array.new<bool>()
-// @variable                        storage for raw highs
 var array<float> highs              = array.new<float>()
-// @variable                        storage for raw lows
 var array<float> lows               = array.new<float>()
-// @variable                        storage for bar time values
 var array<int> times                = array.new<int>()
-// @variable                        last trailing swing high and low
 var trailingExtremes trailing       = trailingExtremes.new()
-// @variable                                storage for orderBlock UDTs (swing order blocks)
 var array<orderBlock> swingOrderBlocks      = array.new<orderBlock>()
-// @variable                                storage for orderBlock UDTs (internal order blocks)
 var array<orderBlock> internalOrderBlocks   = array.new<orderBlock>()
-// @variable                                storage for swing order blocks boxes
 var array<box> swingOrderBlocksBoxes        = array.new<box>()
-// @variable                                storage for internal order blocks boxes
 var array<box> internalOrderBlocksBoxes     = array.new<box>()
-// @variable                        color for swing bullish structures
 var swingBullishColor               = styleInput == MONOCHROME ? MONO_BULLISH : swingBullColorInput
-// @variable                        color for swing bearish structures
 var swingBearishColor               = styleInput == MONOCHROME ? MONO_BEARISH : swingBearColorInput
-// @variable                        color for bullish fair value gaps
 var fairValueGapBullishColor        = styleInput == MONOCHROME ? color.new(MONO_BULLISH,70) : fairValueGapsBullColorInput
-// @variable                        color for bearish fair value gaps
 var fairValueGapBearishColor        = styleInput == MONOCHROME ? color.new(MONO_BEARISH,70) : fairValueGapsBearColorInput
-// @variable                        color for premium zone
 var premiumZoneColor                = styleInput == MONOCHROME ? MONO_BEARISH : premiumZoneColorInput
-// @variable                        color for discount zone
 var discountZoneColor               = styleInput == MONOCHROME ? MONO_BULLISH : discountZoneColorInput 
-// @variable                        bar index on current script iteration
 varip int currentBarIndex           = bar_index
-// @variable                        bar index on last script iteration
 varip int lastBarIndex              = bar_index
-// @variable                        alerts in current bar
 alerts currentAlerts                = alerts.new()
-// @variable                        time at start of chart
 var initialTime                     = time
 
-// we create the needed boxes for displaying order blocks at the first execution
 if barstate.isfirst
     if showSwingOrderBlocksInput
         for index = 1 to swingOrderBlocksSizeInput
@@ -333,25 +251,18 @@ if barstate.isfirst
         for index = 1 to internalOrderBlocksSizeInput
             internalOrderBlocksBoxes.push(box.new(na,na,na,na,xloc = xloc.bar_time,extend = extend.right))
 
-// @variable                        source to use in bearish order blocks mitigation
 bearishOrderBlockMitigationSource   = orderBlockMitigationInput == CLOSE ? close : high
-// @variable                        source to use in bullish order blocks mitigation
 bullishOrderBlockMitigationSource   = orderBlockMitigationInput == CLOSE ? close : low
-// @variable                        default volatility measure
 atrMeasure                          = ta.atr(200)
-// Mean true range has a valid first sample and no zero denominator.
 volatilityMeasure                   = orderBlockFilterInput == ATR ? atrMeasure : ta.cum(ta.tr(true)) / (bar_index + 1)
 highVolatilityBar                   = (high - low) >= (2 * volatilityMeasure)
 orderBlockEligible.push(not na(volatilityMeasure) and not highVolatilityBar and high > low)
 
-// Absolute bar-index arrays; do not shift independently of pivot.barIndex.
 highs.push(high)
 lows.push(low)
 times.push(time)
 
-// Evaluate source statistics and security requests on every bar, outside event gates.
 fvgRequestedTimeframe = fairValueGapsTimeframeInput == '' ? timeframe.period : fairValueGapsTimeframeInput
-// When the chart is raised above the selected FVG timeframe, use chart candles.
 fvgTimeframe = timeframe.in_seconds(fvgRequestedTimeframe) < timeframe.in_seconds() ? timeframe.period : fvgRequestedTimeframe
 fvgSameTimeframe = timeframe.in_seconds(fvgTimeframe) == timeframe.in_seconds()
 fvgNewTimeframe = timeframe.change(fvgTimeframe)
@@ -365,21 +276,14 @@ entryAtr = ta.atr(entryAtrLengthInput)
 [entryTrendLine, entryTrendDirection] = ta.supertrend(entryTrendFactorInput, entryAtrLengthInput)
 chartSeconds = timeframe.in_seconds()
 entryChartOK = chart.is_standard and (timeframe.isseconds or timeframe.isminutes or timeframe.isdwm)
-// Approximately 3x the chart timeframe, capped at Pine's 12-month ceiling.
 higherTf = timeframe.from_seconds(int(math.min(chartSeconds * 3, timeframe.in_seconds('12M'))))
 higherContextOK = entryChartOK and timeframe.in_seconds(higherTf) > chartSeconds
-// Only a completed higher-timeframe candle is used; the offset prevents future leakage.
 higherClosedTrend = request.security(syminfo.tickerid, higherTf, na(entryTrendLine[1]) ? na : entryTrendDirection[1], lookahead = barmerge.lookahead_on)
 
 timeframeText(string tf) =>
     float minutes = str.tonumber(tf)
     not na(minutes) ? (minutes >= 60 and minutes % 60 == 0 ? str.tostring(minutes / 60, '#') + 'ชม.' : str.tostring(minutes, '#') + 'น.') : str.replace_all(str.replace_all(str.replace_all(str.replace_all(tf, 'S', 'วิ.'), 'D', 'วัน'), 'W', 'สัปดาห์'), 'M', 'เดือน')
 
-//---------------------------------------------------------------------------------------------------------------------}
-//USER-DEFINED FUNCTIONS
-//---------------------------------------------------------------------------------------------------------------------{
-// @function            Get the value of the current leg, it can be 0 (bearish) or 1 (bullish)
-// @returns             int
 leg(int size) =>
     var leg     = 0    
     newLegHigh  = high[size] > ta.highest( size)
@@ -391,28 +295,12 @@ leg(int size) =>
         leg := BULLISH_LEG
     leg
 
-// @function            Identify whether the current value is the start of a new leg (swing)
-// @param leg           (int) Current leg value
-// @returns             bool
 startOfNewLeg(int leg)      => ta.change(leg) != 0
 
-// @function            Identify whether the current level is the start of a new bearish leg (swing)
-// @param leg           (int) Current leg value
-// @returns             bool
 startOfBearishLeg(int leg)  => ta.change(leg) == -1
 
-// @function            Identify whether the current level is the start of a new bullish leg (swing)
-// @param leg           (int) Current leg value
-// @returns             bool
 startOfBullishLeg(int leg)  => ta.change(leg) == +1
 
-// @function            create a new label
-// @param labelTime     bar time coordinate
-// @param labelPrice    price coordinate
-// @param tag           text to display
-// @param labelColor    text color
-// @param labelStyle    label style
-// @returns             label ID
 drawLabel(int labelTime, float labelPrice, string tag, color labelColor, string labelStyle) =>    
     var label l_abel = na
 
@@ -421,12 +309,6 @@ drawLabel(int labelTime, float labelPrice, string tag, color labelColor, string 
 
     l_abel := label.new(chart.point.new(labelTime,na,labelPrice),tag,xloc.bar_time,color=color(na),textcolor=labelColor,style = labelStyle,size = size.small)
 
-// @function            create a new line and label representing an EQH or EQL
-// @param p_ivot        starting pivot
-// @param level         price level of current pivot
-// @param size          how many bars ago was the current pivot detected
-// @param equalHigh     true for EQH, false for EQL
-// @returns             label ID
 drawEqualHighLow(pivot p_ivot, float level, int size, bool equalHigh) =>
     equalDisplay e_qualDisplay = equalHigh ? equalHighDisplay : equalLowDisplay
     
@@ -447,11 +329,6 @@ drawEqualHighLow(pivot p_ivot, float level, int size, bool equalHigh) =>
     labelPosition           = bar_index
     e_qualDisplay.l_abel    := label.new(chart.point.new(na,labelPosition,level), tag, xloc.bar_index, color = color(na), textcolor = equalColor, style = labelStyle, size = equalHighsLowsSizeInput)
 
-// @function            store current structure and trailing swing points, and also display swing points and equal highs/lows
-// @param size          (int) structure size
-// @param equalHighLow  (bool) true for displaying current highs/lows
-// @param internal      (bool) true for getting internal structures
-// @returns             label ID
 getCurrentStructure(int size,bool equalHighLow = false, bool internal = false) =>        
     currentLeg              = leg(size)
     newPivot                = startOfNewLeg(currentLeg)
@@ -502,14 +379,6 @@ getCurrentStructure(int size,bool equalHighLow = false, bool internal = false) =
             if showSwingsInput and not internal and not equalHighLow
                 drawLabel(time, p_ivot.currentLevel, (p_ivot.currentLevel > p_ivot.lastLevel ? 'HH' : 'LH') + ' confirmed', swingBearishColor, label.style_label_down)
                 
-// @function                draw line and label representing a structure
-// @param p_ivot            base pivot point
-// @param tag               test to display
-// @param structureColor    base color
-// @param lineStyle         line style
-// @param labelStyle        label style
-// @param labelSize         text size
-// @returns                 label ID
 drawStructure(pivot p_ivot, string tag, color structureColor, string lineStyle, string labelStyle, string labelSize) =>    
     var line l_ine      = line.new(na,na,na,na,xloc = xloc.bar_time)
     var label l_abel    = label.new(na,na)
@@ -521,9 +390,6 @@ drawStructure(pivot p_ivot, string tag, color structureColor, string lineStyle, 
     l_ine   := line.new(chart.point.new(p_ivot.barTime,na,p_ivot.currentLevel), chart.point.new(time,na,p_ivot.currentLevel), xloc.bar_time, color=structureColor, style=lineStyle)
     l_abel  := label.new(chart.point.new(na,bar_index,p_ivot.currentLevel), tag, xloc.bar_index, color=color(na), textcolor=structureColor, style=labelStyle, size = labelSize)
 
-// @function            delete order blocks
-// @param internal      true for internal order blocks
-// @returns             orderBlock ID
 deleteOrderBlocks(bool internal = false) =>
     array<orderBlock> orderBlocks = internal ? internalOrderBlocks : swingOrderBlocks
     if barstate.isconfirmed and orderBlocks.size() > 0
@@ -540,16 +406,10 @@ deleteOrderBlocks(bool internal = false) =>
                     currentAlerts.swingBullishOrderBlock := currentAlerts.swingBullishOrderBlock or brokenBull
                 orderBlocks.remove(index)
 
-// @function            fetch and store order blocks
-// @param p_ivot        base pivot point
-// @param internal      true for internal order blocks
-// @param bias          BULLISH or BEARISH
-// @returns             void
 storeOrdeBlock(pivot p_ivot,bool internal = false,int bias) =>
-    if decisionContextEnabled or (not internal and showSwingOrderBlocksInput) or (internal and showInternalOrderBlocksInput)
+    if entryEnabledInput or decisionContextEnabled or (not internal and showSwingOrderBlocksInput) or (internal and showInternalOrderBlocksInput)
         int selectedIndex = na
         float extreme = na
-        // Bound work on stale pivots; use only eligible, original candle prices.
         int firstIndex = math.max(p_ivot.barIndex, bar_index - 5000)
         if firstIndex < bar_index
             for index = firstIndex to bar_index - 1
@@ -565,9 +425,6 @@ storeOrdeBlock(pivot p_ivot,bool internal = false,int bias) =>
                 orderBlocks.pop()
             orderBlocks.unshift(block)
 
-// @function            draw order blocks as boxes
-// @param internal      true for internal order blocks
-// @returns             void
 drawOrderBlocks(bool internal = false) =>
     array<orderBlock> orderBlocks = internal ? internalOrderBlocks : swingOrderBlocks
     array<box> boxes = internal ? internalOrderBlocksBoxes : swingOrderBlocksBoxes
@@ -582,15 +439,11 @@ drawOrderBlocks(bool internal = false) =>
                 b.set_border_color(internal ? na : blockColor)
                 b.set_bgcolor(blockColor)
             else
-                // Pooled boxes outlive their records: explicitly hide every unused slot.
                 b.set_top(na)
                 b.set_bottom(na)
                 b.set_bgcolor(na)
                 b.set_border_color(na)
 
-// @function            detect and draw structures, also detect and store order blocks
-// @param internal      true for internal structures or order blocks
-// @returns             void
 displayStructure(bool internal = false) =>
     float upperWick = high - math.max(open, close)
     float lowerWick = math.min(open, close) - low
@@ -624,7 +477,7 @@ displayStructure(bool internal = false) =>
         if displayCondition                        
             drawStructure(p_ivot,tag,bullishColor,lineStyle,label.style_label_down,labelSize)
 
-        if decisionContextEnabled or (internal and showInternalOrderBlocksInput) or (not internal and showSwingOrderBlocksInput)
+        if entryEnabledInput or decisionContextEnabled or (internal and showInternalOrderBlocksInput) or (not internal and showSwingOrderBlocksInput)
             storeOrdeBlock(p_ivot,internal,BULLISH)
 
     p_ivot          := internal ? internalLow : swingLow    
@@ -649,22 +502,13 @@ displayStructure(bool internal = false) =>
         if displayCondition                        
             drawStructure(p_ivot,tag,bearishColor,lineStyle,label.style_label_up,labelSize)
 
-        if decisionContextEnabled or (internal and showInternalOrderBlocksInput) or (not internal and showSwingOrderBlocksInput)
+        if entryEnabledInput or decisionContextEnabled or (internal and showInternalOrderBlocksInput) or (not internal and showSwingOrderBlocksInput)
             storeOrdeBlock(p_ivot,internal,BEARISH)
 
-// @function            draw one fair value gap box (each fair value gap has two boxes)
-// @param leftTime      left time coordinate
-// @param rightTime     right time coordinate
-// @param topPrice      top price level
-// @param bottomPrice   bottom price level
-// @param boxColor      box color
-// @returns             box ID
 fairValueGapBox(leftTime,rightTime,topPrice,bottomPrice,boxColor) =>
     int rightEdge = rightTime + fairValueGapsExtendInput * int(timeframe.in_seconds() * 1000)
     box.new(chart.point.new(leftTime,na,topPrice),chart.point.new(rightEdge,na,bottomPrice), xloc=xloc.bar_time, border_color=boxColor, bgcolor=boxColor)
 
-// @function            delete fair value gaps
-// @returns             fairValueGap ID
 deleteFairValueGaps() =>
     if barstate.isconfirmed and fairValueGaps.size() > 0
         for index = fairValueGaps.size() - 1 to 0
@@ -681,8 +525,6 @@ deleteFairValueGaps() =>
                 gap.bottomBox.set_right(rightEdge)
                 int(na)
 
-// @function            draw fair value gaps
-// @returns             fairValueGap ID
 drawFairValueGaps() =>
     float lastClose = fvgSameTimeframe ? close[1] : fvgHtfClose
     float lastOpen = fvgSameTimeframe ? open[1] : fvgHtfOpen
@@ -698,7 +540,6 @@ drawFairValueGaps() =>
     bool bullishGap = currentLow > oldHigh and lastClose > oldHigh and bodyPercent > threshold
     bool bearishGap = currentHigh < oldLow and lastClose < oldLow and -bodyPercent > threshold
     if barstate.isconfirmed and newSourceBar
-        // The first chart bar may already have filled a newly confirmed HTF gap.
         if (bullishGap and low > oldHigh) or (bearishGap and high < oldLow)
             int bias = bullishGap ? BULLISH : BEARISH
             float top = bullishGap ? currentLow : oldLow
@@ -713,21 +554,12 @@ drawFairValueGaps() =>
             currentAlerts.bullishFairValueGap := bullishGap
             currentAlerts.bearishFairValueGap := bearishGap
 
-// @function            get line style from string
-// @param style         line style
-// @returns             string
 getStyle(string style) =>
     switch style
         SOLID => line.style_solid
         DASHED => line.style_dashed
         DOTTED => line.style_dotted
 
-// @function            draw MultiTimeFrame levels
-// @param timeframe     base timeframe
-// @param sameTimeframe true if chart timeframe is same as base timeframe
-// @param style         line style
-// @param levelColor    line and text color
-// @returns             void
 drawLevels(string timeframe, bool sameTimeframe, string style, color levelColor) =>
     [topLevel, bottomLevel, leftTime, rightTime] = request.security(syminfo.tickerid, timeframe, [high[1], low[1], time[1], time],lookahead = barmerge.lookahead_on)
 
@@ -764,21 +596,14 @@ drawLevels(string timeframe, bool sameTimeframe, string style, color levelColor)
     bottomLine.set_second_point(chart.point.new(last_bar_time + 20 * (time-time[1]),na,parsedBottom))
     bottomLabel.set_point(      chart.point.new(last_bar_time + 20 * (time-time[1]),na,parsedBottom))
 
-// @function            true if chart timeframe is higher than provided timeframe
-// @param timeframe     timeframe to check
-// @returns             bool
 higherTimeframe(string timeframe) => timeframe.in_seconds() > timeframe.in_seconds(timeframe)
 
-// @function            update trailing swing points
-// @returns             int
 updateTrailingExtremes() =>
     trailing.top            := math.max(high,trailing.top)
     trailing.lastTopTime    := trailing.top == high ? time : trailing.lastTopTime
     trailing.bottom         := math.min(low,trailing.bottom)
     trailing.lastBottomTime := trailing.bottom == low ? time : trailing.lastBottomTime
 
-// @function            draw trailing swing points
-// @returns             void
 drawHighLowSwings() =>
     var line topLine        = line.new(na, na, na, na, color = swingBearishColor, xloc = xloc.bar_time)
     var line bottomLine     = line.new(na, na, na, na, color = swingBullishColor, xloc = xloc.bar_time)
@@ -799,15 +624,6 @@ drawHighLowSwings() =>
     bottomLabel.set_text(       (swingTrend.bias == BULLISH ? 'รับแข็ง ' : 'รับอ่อน ') + str.tostring(trailing.bottom, format.mintick))
     bottomLine.set_style(       swingTrend.bias == BULLISH ? line.style_solid : line.style_dashed)
 
-// @function            draw a zone with a label and a box
-// @param labelLevel    price level for label
-// @param labelIndex    bar index for label
-// @param top           top price level for box
-// @param bottom        bottom price level for box
-// @param tag           text to display
-// @param zoneColor     base color
-// @param style         label style
-// @returns             void
 drawZone(float labelLevel, int labelIndex, float top, float bottom, string tag, color zoneColor, string style) =>
     var label l_abel    = label.new(na,na,text = tag, color=color(na),textcolor = zoneColor, style = style, size = size.small)
     var box b_ox        = box.new(na,na,na,na,bgcolor = color.new(zoneColor,80),border_color = color(na), xloc = xloc.bar_time)
@@ -817,8 +633,6 @@ drawZone(float labelLevel, int labelIndex, float top, float bottom, string tag, 
 
     l_abel.set_point(           chart.point.new(na,labelIndex,labelLevel))
 
-// @function            draw premium/discount zones
-// @returns             void
 drawPremiumDiscountZones() =>
     drawZone(trailing.top, math.round(0.5*(trailing.barIndex + last_bar_index)), trailing.top, 0.95*trailing.top + 0.05*trailing.bottom, 'Premium', premiumZoneColor, label.style_label_down)
 
@@ -827,9 +641,6 @@ drawPremiumDiscountZones() =>
 
     drawZone(trailing.bottom, math.round(0.5*(trailing.barIndex + last_bar_index)), 0.95*trailing.bottom + 0.05*trailing.top, trailing.bottom, 'Discount', discountZoneColor, label.style_label_up)
 
-//---------------------------------------------------------------------------------------------------------------------}
-//MUTABLE VARIABLES & EXECUTION
-//---------------------------------------------------------------------------------------------------------------------{
 getCurrentStructure(swingsLengthInput,false)
 getCurrentStructure(internalLengthInput,false,true)
 if showEqualHighsLowsInput
@@ -840,9 +651,9 @@ if decisionContextEnabled or entryEnabledInput or showInternalsInput or showInte
 if decisionContextEnabled or entryEnabledInput or showStructureInput or showSwingOrderBlocksInput or showHighLowSwingsInput or showPremiumDiscountZonesInput
     displayStructure()
 
-if decisionContextEnabled or showInternalOrderBlocksInput
+if entryEnabledInput or decisionContextEnabled or showInternalOrderBlocksInput
     deleteOrderBlocks(true)
-if decisionContextEnabled or showSwingOrderBlocksInput
+if entryEnabledInput or decisionContextEnabled or showSwingOrderBlocksInput
     deleteOrderBlocks()
 if showFairValueGapsInput
     deleteFairValueGaps()
@@ -881,34 +692,132 @@ if barstate.islastconfirmedhistory or (barstate.isrealtime and newBar)
         drawLevels('M',timeframe.ismonthly,monthlyLevelsStyleInput,monthlyLevelsColorInput)
 
 
-//---------------------------------------------------------------------------------------------------------------------
-// ENTRY ENGINE - closed-bar structure/retest; one manual plan at a time.
-//---------------------------------------------------------------------------------------------------------------------
 priceText(float value) => na(value) ? '-' : str.tostring(value, format.mintick)
+
+roundStop(float value, int side, float tick) => (side == BULLISH ? math.floor(value / tick) : math.ceil(value / tick)) * tick
+
+entryTargetLevels(int side, float reference) =>
+    array<float> levels = array.new<float>()
+    for p in array.from(side == BULLISH ? internalHigh : internalLow, side == BULLISH ? swingHigh : swingLow)
+        if not p.crossed and not na(p.currentLevel) and side * (p.currentLevel - reference) >= 0
+            levels.push(p.currentLevel)
+    array<orderBlock> blocks = array.copy(internalOrderBlocks)
+    array.concat(blocks, swingOrderBlocks)
+    for block in blocks
+        bool ahead = side == BULLISH ? block.barHigh >= reference : block.barLow <= reference
+        if block.bias == -side and ahead
+            levels.push(side == BULLISH ? math.max(reference, block.barLow) : math.min(reference, block.barHigh))
+    levels
+
+targetPrices(int side, float reference, float risk, array<float> levels, float buffer, float tick, float secondR, float thirdR) =>
+    array<float> distances = array.new<float>()
+    for level in levels
+        distances.push(math.max(0, side * (level - reference) - buffer))
+    array.sort(distances)
+    array<float> targets = array.new<float>()
+    float previous = 0
+    for cap in array.from(risk, risk * secondR, risk * thirdR)
+        float distance = cap
+        for obstacle in distances
+            bool separated = targets.size() == 0 or obstacle >= previous + math.max(tick, risk * 0.25)
+            if separated and obstacle <= cap
+                distance := obstacle
+                break
+        distance := math.floor(distance / tick + 1e-8) * tick
+        targets.push(math.round((reference + side * distance) / tick) * tick)
+        previous := distance
+    float tp1 = targets.get(0)
+    float tp2 = targets.get(1)
+    float tp3 = targets.get(2)
+    bool ordered = side * (tp2 - tp1) >= tick * 0.5 and side * (tp3 - tp2) >= tick * 0.5
+    [tp1, tp2, tp3, ordered]
+
+planProgress(int side, float barHigh, float barLow, float barClose, float stop, float tp1, float tp2, float tp3, int stage, float protectedLevel, bool exitOnBreak) =>
+    bool stopHit = side == BULLISH ? barLow <= stop : barHigh >= stop
+    float favorable = side == BULLISH ? barHigh : barLow
+    int touched = side * (favorable - tp3) >= 0 ? 3 : side * (favorable - tp2) >= 0 ? 2 : side * (favorable - tp1) >= 0 ? 1 : 0
+    int nextStage = stopHit ? stage : math.max(stage, touched)
+    bool broken = exitOnBreak and nextStage > 0 and side * (barClose - protectedLevel) < 0
+    int exitCode = stopHit ? (touched > stage ? 2 : 1) : nextStage == 3 ? 3 : broken ? 4 : 0
+    [nextStage, exitCode]
+
+nextPlanStop(int side, float stop, float reference, float tp1, int stage, float structuralStop, float barClose) =>
+    float nextStop = stop
+    if stage > 0
+        float floorStop = stage >= 2 ? tp1 : reference
+        nextStop := side == BULLISH ? math.max(stop, floorStop) : math.min(stop, floorStop)
+        if not na(structuralStop)
+            nextStop := side == BULLISH ? math.max(nextStop, structuralStop) : math.min(nextStop, structuralStop)
+    [nextStop, stage > 0 and side * (barClose - nextStop) <= 0]
+
+if barstate.isfirst
+    if entryRunnerRewardInput <= entryRewardInput
+        runtime.error('TP3 (R) ต้องมากกว่า TP2 (R)')
+    if entryTp1PercentInput + entryTp2PercentInput >= 100
+        runtime.error('TP1% + TP2% ต้องน้อยกว่า 100 เพื่อเหลือส่วนสำหรับ TP3')
+    if entrySelfCheckInput
+        for side in array.from(BULLISH, BEARISH)
+            float reference = 100
+            float stop = reference - side * 10
+            float tp1 = reference + side * 10
+            float tp2 = reference + side * 20
+            float tp3 = reference + side * 30
+            float protectedLevel = reference + side * 5
+            [first, firstExit] = planProgress(side, side == BULLISH ? 112 : 101, side == BULLISH ? 99 : 88, reference + side * 11, stop, tp1, tp2, tp3, 0, protectedLevel, true)
+            [beStop, giveback] = nextPlanStop(side, stop, reference, tp1, first, na, reference + side * 11)
+            [stoppedStage, stoppedExit] = planProgress(side, side == BULLISH ? 109 : 101, side == BULLISH ? 99 : 91, reference + side * 2, beStop, tp1, tp2, tp3, first, protectedLevel, true)
+            [second, secondExit] = planProgress(side, side == BULLISH ? 122 : 99, side == BULLISH ? 101 : 78, reference + side * 21, beStop, tp1, tp2, tp3, first, protectedLevel, true)
+            [lockStop, lockExit] = nextPlanStop(side, beStop, reference, tp1, second, na, reference + side * 21)
+            [ambiguousStage, ambiguousExit] = planProgress(side, 131, 69, reference, stop, tp1, tp2, tp3, 0, protectedLevel, true)
+            [brokenStage, brokenExit] = planProgress(side, side == BULLISH ? 109 : 98, side == BULLISH ? 102 : 91, reference + side * 4, beStop, tp1, tp2, tp3, first, protectedLevel, true)
+            [heldStage, heldExit] = planProgress(side, side == BULLISH ? 109 : 98, side == BULLISH ? 102 : 91, reference + side * 4, beStop, tp1, tp2, tp3, first, protectedLevel, false)
+            [allStage, allExit] = planProgress(side, side == BULLISH ? 132 : 99, side == BULLISH ? 101 : 68, reference + side * 31, stop, tp1, tp2, tp3, 0, protectedLevel, true)
+            [ratchet, ratchetExit] = nextPlanStop(side, lockStop, reference, tp1, 2, reference - side * 5, reference + side * 25)
+            [floorPrice, floorExit] = nextPlanStop(side, stop, reference, tp1, 1, na, reference - side)
+            [fallback1, fallback2, fallback3, fallbackOrdered] = targetPrices(side, reference, 10, array.new<float>(), 0, 1, 2, 3)
+            [near1, near2, near3, nearOrdered] = targetPrices(side, reference, 10, array.from(reference + side * 8, reference + side * 8, reference + side * 16), 1, 1, 2, 3)
+            [crowded1, crowded2, crowded3, crowdedOrdered] = targetPrices(side, reference, 10, array.from(reference), 1, 1, 2, 3)
+            [tiny1, tiny2, tiny3, tinyOrdered] = targetPrices(side, reference, 1, array.new<float>(), 0, 1, 1.25, 1.5)
+            if first != 1 or firstExit != 0 or beStop != reference or giveback or stoppedStage != 1 or stoppedExit != 1 or second != 2 or secondExit != 0 or lockStop != tp1 or lockExit
+                runtime.error('Self-check: TP progression / next-bar stop failed')
+            if ambiguousStage != 0 or ambiguousExit != 2 or brokenStage != 1 or brokenExit != 4 or heldStage != 1 or heldExit != 0 or allStage != 3 or allExit != 3
+                runtime.error('Self-check: ambiguous bar / breakdown / multiple targets failed')
+            if ratchet != lockStop or ratchetExit or not floorExit or floorPrice != reference
+                runtime.error('Self-check: stop ratchet / profit giveback failed')
+            if fallback1 != tp1 or fallback2 != tp2 or fallback3 != tp3 or not fallbackOrdered or near1 != reference + side * 7 or near2 != reference + side * 15 or near3 != tp3 or not nearOrdered or crowded1 != reference or not crowdedOrdered
+                runtime.error('Self-check: target ordering / obstacle selection failed')
+            if tinyOrdered or tiny1 != reference + side or tiny2 != tiny1 or tiny3 != tiny1
+                runtime.error('Self-check: coarse ticks must not push targets beyond their R caps')
 
 var int setupSide = 0
 var int setupBar = na
 var float setupLevel = na
 var float setupAtr = na
 var float setupExtreme = na
+var bool setupRetested = false
 var bool guideActive = false
 var int signalBar = na
 var int lastExitBar = na
 var int guideSide = 0
 var float guideEntry = na
 var float guideStop = na
+var float guideInitialRisk = na
+var float guideProtectedLevel = na
 var float guideTp1 = na
 var float guideTp2 = na
-var bool tp1Touched = false
+var float guideTp3 = na
+var int guideStage = 0
 var string tradeStatus = 'รอโครงสร้างยืนยัน'
 var line entryGuide = na
 var line stopGuide = na
 var line tp1Guide = na
 var line tp2Guide = na
+var line tp3Guide = na
 var label entryTag = na
 var label stopTag = na
 var label tp1Tag = na
 var label tp2Tag = na
+var label tp3Tag = na
 var box riskGuide = na
 var box rewardGuide = na
 var array<line> completedPlanLines = array.new<line>()
@@ -916,6 +825,12 @@ var array<label> completedPlanLabels = array.new<label>()
 var array<box> completedPlanBoxes = array.new<box>()
 bool buySignal = false
 bool sellSignal = false
+bool tp1Signal = false
+bool tp2Signal = false
+bool tp3Signal = false
+bool stopMovedSignal = false
+bool planExitSignal = false
+bool breakdownSignal = false
 
 bool bullInternalBreak = currentAlerts.internalBullishBOS or currentAlerts.internalBullishCHoCH
 bool bearInternalBreak = currentAlerts.internalBearishBOS or currentAlerts.internalBearishCHoCH
@@ -925,22 +840,48 @@ bool usableEntryData = entryEnabledInput and entryChartOK and not na(entryAtr) a
 
 if barstate.isconfirmed
     bool planEnded = false
-    // Only later candles can touch a plan created at the signal candle close.
     if guideActive and bar_index > signalBar
-        bool stopTouched = guideSide == BULLISH ? low <= guideStop : high >= guideStop
-        bool targetTouched = guideSide == BULLISH ? high >= guideTp2 : low <= guideTp2
-        bool milestoneTouched = guideSide == BULLISH ? high >= guideTp1 : low <= guideTp1
-        bool planExpired = bar_index - signalBar >= entryHoldInput
-        // OHLC cannot tell whether a new milestone occurred before a stop in the same bar.
-        tp1Touched := tp1Touched or (milestoneTouched and not stopTouched)
-        if stopTouched or targetTouched or planExpired
+        [nextStage, exitCode] = planProgress(guideSide, high, low, close, guideStop, guideTp1, guideTp2, guideTp3, guideStage, guideProtectedLevel, entryBreakExitInput)
+        tp1Signal := guideStage < 1 and nextStage >= 1
+        tp2Signal := guideStage < 2 and nextStage >= 2
+        tp3Signal := guideStage < 3 and nextStage >= 3
+        guideStage := nextStage
+        if exitCode == 0 and bar_index - signalBar >= entryHoldInput
+            exitCode := 6
+        if exitCode == 0 and guideStage > 0
+            for p in array.from(guideSide == BULLISH ? internalLow : internalHigh, guideSide == BULLISH ? swingLow : swingHigh)
+                if not p.crossed and p.barIndex > signalBar and not na(p.currentLevel) and guideSide * (p.currentLevel - guideProtectedLevel) > 0 and guideSide * (close - p.currentLevel) > 0
+                    guideProtectedLevel := p.currentLevel
+            float structuralStop = roundStop(guideProtectedLevel - guideSide * entryStopBufferInput * entryAtr, guideSide, syminfo.mintick)
+            [nextStop, closeForProtection] = nextPlanStop(guideSide, guideStop, guideEntry, guideTp1, guideStage, structuralStop, close)
+            if closeForProtection
+                exitCode := 5
+            else if guideSide * (nextStop - guideStop) >= syminfo.mintick * 0.5
+                guideStop := nextStop
+                stopMovedSignal := true
+        if exitCode != 0
             guideActive := false
             planEnded := true
+            planExitSignal := true
+            breakdownSignal := exitCode == 4
             lastExitBar := bar_index
             setupSide := 0
-            tradeStatus := stopTouched and targetTouched ? 'แตะทั้ง SL/TP2 | ลำดับไม่ชัด' : stopTouched ? 'แตะจุดตัดขาดทุน SL' : targetTouched ? 'แตะเป้า TP2' : 'แผนหมดเวลา'
+            tradeStatus := exitCode == 1 ? 'แตะ SL | จบส่วนที่เหลือ' : exitCode == 2 ? 'แตะ SL และ TP ใหม่ | ลำดับไม่ชัด' : exitCode == 3 ? 'ถึง TP3 | จบทุกส่วน' : exitCode == 4 ? (guideSide == BULLISH ? 'Support breakdown' : 'Resistance breakout') + ' | ออกส่วนที่เหลือเมื่อปิด' : exitCode == 5 ? 'คืนกำไรเกินระดับคุ้มครอง | ออกเมื่อปิด' : 'แผนหมดเวลา | จบส่วนที่เหลือ'
         else
-            tradeStatus := tp1Touched ? 'แตะ TP1 แล้ว ยังรอ SL / TP2' : (guideSide == BULLISH ? 'แผนซื้อกำลังทำงาน' : 'แผนขายกำลังทำงาน')
+            tradeStatus := guideStage >= 2 ? 'ถึง TP2 | ตามส่วนที่เหลือไป TP3' : guideStage == 1 ? 'ถึง TP1 | คุ้มครองทุน / รอ TP2' : (guideSide == BULLISH ? 'แผนซื้อกำลังทำงาน' : 'แผนขายกำลังทำงาน')
+        string events = ''
+        if tp1Signal
+            events += 'TP1 ' + priceText(guideTp1) + ' | แผนแบ่งปิด ' + str.tostring(entryTp1PercentInput) + '%; '
+        if tp2Signal
+            events += 'TP2 ' + priceText(guideTp2) + ' | แผนแบ่งปิด ' + str.tostring(entryTp2PercentInput) + '%; '
+        if tp3Signal
+            events += 'TP3 ' + priceText(guideTp3) + ' | ส่วนสุดท้าย ' + str.tostring(100 - entryTp1PercentInput - entryTp2PercentInput) + '%; '
+        if planEnded
+            events += tradeStatus + ' | ราคาปิด ' + priceText(close)
+        else if stopMovedSignal
+            events += 'SL ใหม่ ' + priceText(guideStop) + ' เริ่มแท่งถัดไป; '
+        if entryManagementAlertsInput and events != ''
+            alert((guideSide == BULLISH ? 'BUY' : 'SELL') + ' | ' + syminfo.tickerid + ' | ' + timeframeText(timeframe.period) + ' | ' + events + ' | แผนบนกราฟ ไม่ใช่การยืนยัน fill', alert.freq_once_per_bar_close)
 
     bool cooling = not na(lastExitBar) and bar_index - lastExitBar <= 3
     if not usableEntryData
@@ -948,7 +889,6 @@ if barstate.isconfirmed
     else if guideActive
         setupSide := 0
     else if not cooling
-        // An opposite break always replaces/cancels the prior pending idea.
         if bullBreak or bearBreak
             setupSide := 0
             tradeStatus := bullBreak and bearBreak ? 'โครงสร้างขัดแย้งกัน' : 'ทะลุระดับแต่สวนแนวโน้ม'
@@ -961,6 +901,7 @@ if barstate.isconfirmed
                     setupLevel := bullBreak ? (bullInternalBreak ? internalHigh.currentLevel : swingHigh.currentLevel) : (bearInternalBreak ? internalLow.currentLevel : swingLow.currentLevel)
                     setupAtr := entryAtr
                     setupExtreme := newSide == BULLISH ? low : high
+                    setupRetested := false
                     tradeStatus := newSide == BULLISH ? 'รอย่อทดสอบเพื่อซื้อ' : 'รอเด้งทดสอบเพื่อขาย'
         if setupSide != 0
             float tolerance = 0.20 * setupAtr
@@ -973,32 +914,37 @@ if barstate.isconfirmed
             else if bar_index > setupBar
                 setupExtreme := setupSide == BULLISH ? math.min(setupExtreme, low) : math.max(setupExtreme, high)
                 bool touched = low <= setupLevel + tolerance and high >= setupLevel - tolerance
+                setupRetested := setupRetested or touched
                 bool reclaimed = setupSide == BULLISH ? close > setupLevel and close > open : close < setupLevel and close < open
                 bool notChasing = math.abs(close - setupLevel) <= setupAtr
-                if touched and reclaimed and notChasing
+                if setupRetested and reclaimed and notChasing
                     float reference = math.round_to_mintick(close)
-                    float structuralStop = setupExtreme - setupSide * 0.20 * setupAtr
+                    float structuralStop = setupExtreme - setupSide * entryStopBufferInput * setupAtr
                     float stopDistance = math.max(math.abs(reference - structuralStop), 0.80 * setupAtr)
                     float rawStop = reference - setupSide * stopDistance
-                    float stop = setupSide == BULLISH ? math.floor(rawStop / syminfo.mintick) * syminfo.mintick : math.ceil(rawStop / syminfo.mintick) * syminfo.mintick
+                    float stop = roundStop(rawStop, setupSide, syminfo.mintick)
                     float risk = math.abs(reference - stop)
-                    // Never pull the stop inside structure just to force a trade.
-                    if risk <= 3.0 * setupAtr and risk >= syminfo.mintick
+                    [tp1, tp2, tp3, ordered] = targetPrices(setupSide, reference, risk, entryTargetLevels(setupSide, reference), math.max(syminfo.mintick, 0.05 * setupAtr), syminfo.mintick, entryRewardInput, entryRunnerRewardInput)
+                    bool roomOK = setupSide * (tp1 - reference) >= math.max(syminfo.mintick, entryMinRewardInput * risk)
+                    if risk <= 3.0 * setupAtr and risk >= syminfo.mintick and roomOK and ordered
                         guideSide := setupSide
                         guideEntry := reference
                         guideStop := stop
-                        guideTp1 := math.round_to_mintick(reference + setupSide * risk)
-                        guideTp2 := math.round_to_mintick(reference + setupSide * risk * entryRewardInput)
+                        guideInitialRisk := risk
+                        guideProtectedLevel := setupLevel
+                        guideTp1 := tp1
+                        guideTp2 := tp2
+                        guideTp3 := tp3
                         signalBar := bar_index
                         guideActive := true
-                        tp1Touched := false
+                        guideStage := 0
                         buySignal := setupSide == BULLISH
                         sellSignal := setupSide == BEARISH
                         tradeStatus := buySignal ? 'แผนซื้อกำลังทำงาน' : 'แผนขายกำลังทำงาน'
                         if entryAlertsInput
-                            alert((buySignal ? 'BUY' : 'SELL') + ' | ' + syminfo.tickerid + ' | ' + timeframeText(timeframe.period) + ' ยืนยันจังหวะ | จุดเข้า ' + priceText(guideEntry) + ' | SL ' + priceText(guideStop) + ' | TP1 ' + priceText(guideTp1) + ' | TP2 ' + priceText(guideTp2), alert.freq_once_per_bar_close)
+                            alert((buySignal ? 'BUY' : 'SELL') + ' | ' + syminfo.tickerid + ' | ' + timeframeText(timeframe.period) + ' ยืนยันย่อ/เด้งกลับ | จุดเข้าอ้างอิง ' + priceText(guideEntry) + ' | SL ' + priceText(guideStop) + ' | TP1 ' + priceText(guideTp1) + ' (' + str.tostring(entryTp1PercentInput) + '%) | TP2 ' + priceText(guideTp2) + ' (' + str.tostring(entryTp2PercentInput) + '%) | TP3 ' + priceText(guideTp3) + ' (' + str.tostring(100 - entryTp1PercentInput - entryTp2PercentInput) + '%)', alert.freq_once_per_bar_close)
                     else
-                        tradeStatus := 'ข้ามจังหวะนี้: SL ไกลเกินไป'
+                        tradeStatus := not ordered ? 'ข้ามจังหวะนี้: tick ใหญ่เกินจะแยก TP ในเพดาน R' : not roomOK ? 'ข้ามจังหวะนี้: แนวรับต้านขวางก่อน TP1 ขั้นต่ำ' : 'ข้ามจังหวะนี้: SL อยู่นอกช่วง 1 tick ถึง 3 ATR'
                     setupSide := 0
 
     if buySignal or sellSignal
@@ -1008,39 +954,49 @@ if barstate.isconfirmed
         stopGuide := line.new(bar_index, guideStop, right, guideStop, color = RED, width = 2)
         tp1Guide := line.new(bar_index, guideTp1, right, guideTp1, color = BLUE, style = line.style_dashed)
         tp2Guide := line.new(bar_index, guideTp2, right, guideTp2, color = GREEN, width = 2)
+        tp3Guide := line.new(bar_index, guideTp3, right, guideTp3, color = GREEN, style = line.style_dashed)
         entryTag := label.new(right, guideEntry, 'จุดเข้า ' + priceText(guideEntry), style = label.style_label_left, color = sideColor, textcolor = color.white, size = size.small)
-        stopTag := label.new(right, guideStop, 'SL ' + priceText(guideStop), style = label.style_label_left, color = RED, textcolor = color.white, size = size.small)
-        tp1Tag := label.new(right, guideTp1, 'TP1 1R ' + priceText(guideTp1), style = label.style_label_left, color = BLUE, textcolor = color.white, size = size.small)
-        tp2Tag := label.new(right, guideTp2, 'TP2 ' + str.tostring(entryRewardInput, '#.##') + 'R ' + priceText(guideTp2), style = label.style_label_left, color = GREEN, textcolor = color.white, size = size.small)
+        stopTag := label.new(right, guideStop, 'SL ' + priceText(guideStop), style = label.style_label_right, color = RED, textcolor = color.white, size = size.small)
+        tp1Tag := label.new(right, guideTp1, 'TP1 ' + priceText(guideTp1), style = label.style_label_left, color = BLUE, textcolor = color.white, size = size.small)
+        tp2Tag := label.new(right, guideTp2, 'TP2 ' + priceText(guideTp2), style = label.style_label_left, color = GREEN, textcolor = color.white, size = size.small)
+        tp3Tag := label.new(right, guideTp3, 'TP3 ' + priceText(guideTp3), style = label.style_label_left, color = GREEN, textcolor = color.white, size = size.small)
         riskGuide := box.new(bar_index, math.max(guideEntry, guideStop), right, math.min(guideEntry, guideStop), border_color = na, bgcolor = color.new(RED, 90))
-        rewardGuide := box.new(bar_index, math.max(guideEntry, guideTp2), right, math.min(guideEntry, guideTp2), border_color = na, bgcolor = color.new(GREEN, 92))
+        rewardGuide := box.new(bar_index, math.max(guideEntry, guideTp3), right, math.min(guideEntry, guideTp3), border_color = na, bgcolor = color.new(GREEN, 92))
     if guideActive or planEnded
         int right = planEnded ? bar_index : bar_index + 3
-        for guide in array.from(entryGuide, stopGuide, tp1Guide, tp2Guide)
+        if stopMovedSignal
+            line.set_xy1(stopGuide, bar_index + 1, guideStop)
+            line.set_y2(stopGuide, guideStop)
+            label.set_y(stopTag, guideStop)
+        label.set_text(stopTag, 'SL ' + priceText(guideStop) + (guideStage > 0 ? ' | คุ้มครองส่วนที่เหลือ' : ''))
+        for guide in array.from(entryGuide, stopGuide, tp1Guide, tp2Guide, tp3Guide)
             line.set_x2(guide, right)
-        for tag in array.from(entryTag, stopTag, tp1Tag, tp2Tag)
+        for tag in array.from(entryTag, stopTag, tp1Tag, tp2Tag, tp3Tag)
             label.set_x(tag, right)
         box.set_right(riskGuide, right)
         box.set_right(rewardGuide, right)
-        if tp1Touched
-            label.set_text(tp1Tag, 'TP1 แตะแล้ว ' + priceText(guideTp1))
+        for index = 0 to 2
+            label targetTag = index == 0 ? tp1Tag : index == 1 ? tp2Tag : tp3Tag
+            float targetPrice = index == 0 ? guideTp1 : index == 1 ? guideTp2 : guideTp3
+            int targetPercent = index == 0 ? entryTp1PercentInput : index == 1 ? entryTp2PercentInput : 100 - entryTp1PercentInput - entryTp2PercentInput
+            string targetText = 'TP' + str.tostring(index + 1) + (guideStage > index ? ' แตะแล้ว ' : ' ') + priceText(targetPrice) + ' | ' + str.tostring(targetPercent) + '% | ' + str.tostring(math.abs(targetPrice - guideEntry) / guideInitialRisk, '#.##') + 'R'
+            label.set_text(targetTag, targetText)
         if planEnded
-            // Freeze at the ending candle. Retain only bounded, muted history.
             label.set_text(entryTag, (guideSide == BULLISH ? 'BUY' : 'SELL') + ' จบแผน / เข้า ' + priceText(guideEntry))
-            string summary = tradeStatus + '\nจุดเข้า ' + priceText(guideEntry) + '\nSL ' + priceText(guideStop) + '\nTP1 ' + priceText(guideTp1) + '\nTP2 ' + priceText(guideTp2) + '\nเป็นแผนบนกราฟ ไม่ใช่สถานะออเดอร์จริง'
-            for guide in array.from(entryGuide, stopGuide, tp1Guide, tp2Guide)
+            string summary = tradeStatus + '\nจุดเข้า ' + priceText(guideEntry) + '\nSL ล่าสุด ' + priceText(guideStop) + '\nTP1 ' + priceText(guideTp1) + '\nTP2 ' + priceText(guideTp2) + '\nTP3 ' + priceText(guideTp3) + '\nเป็นแผนบนกราฟ ไม่ใช่สถานะออเดอร์จริง'
+            for guide in array.from(entryGuide, stopGuide, tp1Guide, tp2Guide, tp3Guide)
                 line.set_color(guide, color.new(GRAY, 55))
                 line.set_width(guide, 1)
                 completedPlanLines.push(guide)
-            for tag in array.from(entryTag, stopTag, tp1Tag, tp2Tag)
-                label.set_color(tag, color.new(GRAY, 85))
-                label.set_textcolor(tag, #475569)
+            for tag in array.from(entryTag, stopTag, tp1Tag, tp2Tag, tp3Tag)
+                label.set_color(tag, color.new(#172334, 15))
+                label.set_textcolor(tag, #cbd5e1)
                 label.set_size(tag, size.small)
                 label.set_tooltip(tag, summary)
                 completedPlanLabels.push(tag)
             completedPlanBoxes.push(riskGuide)
             completedPlanBoxes.push(rewardGuide)
-            while completedPlanLines.size() > entryHistoryInput * 4
+            while completedPlanLines.size() > entryHistoryInput * 5
                 line.delete(completedPlanLines.shift())
                 label.delete(completedPlanLabels.shift())
             while completedPlanBoxes.size() > entryHistoryInput * 2
@@ -1051,7 +1007,6 @@ plotshape(sellSignal, title = 'SELL ยืนยันแล้ว', text = 'SEL
 plot(entryShowTrendInput and entryTrendDirection < 0 ? entryTrendLine : na, 'Supertrend up', color = color.new(GREEN, 20), style = plot.style_linebr)
 plot(entryShowTrendInput and entryTrendDirection > 0 ? entryTrendLine : na, 'Supertrend down', color = color.new(RED, 20), style = plot.style_linebr)
 
-// Remember the last confirmed event even when historical structure drawings are hidden.
 var int contextBreakBar = na
 var int contextBreakTime = na
 var int contextBreakSide = 0
@@ -1070,42 +1025,40 @@ if barstate.isconfirmed
         contextBreakTag := contextBreakSide == 0 ? 'สวนกัน' : (internalEvent ? 'ย่อย ' : 'หลัก ') + (changed ? 'เปลี่ยนทิศ' : 'ไปต่อ')
         contextBreakLevel := contextBreakSide == 0 ? na : bullBreak ? (internalEvent ? internalHigh.currentLevel : swingHigh.currentLevel) : (internalEvent ? internalLow.currentLevel : swingLow.currentLevel)
 
-// Live plan health is display-only. Entry/SL/TP and the confirmed engine never change here.
 var bool planBreakConfirmed = false
 bool planWatch = guideActive and bar_index > signalBar
-bool livePlanBroken = planWatch and guideSide * (close - setupLevel) < -0.20 * setupAtr
+bool livePlanBroken = planWatch and guideSide * (close - guideProtectedLevel) < 0
 if barstate.isconfirmed
     if not guideActive or buySignal or sellSignal
         planBreakConfirmed := false
     else if livePlanBroken
         planBreakConfirmed := true
-    else if guideSide * (close - setupLevel) >= 0
+    else if guideSide * (close - guideProtectedLevel) >= 0
         planBreakConfirmed := false
 string planWatchStatus = ''
 string planWatchAction = ''
 color planWatchColor = color.orange
 if planWatch
-    bool stopNow = guideSide == BULLISH ? low <= guideStop : high >= guideStop
-    bool targetNow = guideSide == BULLISH ? high >= guideTp2 : low <= guideTp2
+    bool stopNow = not barstate.isconfirmed and (guideSide == BULLISH ? low <= guideStop : high >= guideStop)
+    float nextTarget = guideStage == 0 ? guideTp1 : guideStage == 1 ? guideTp2 : guideTp3
+    bool targetNow = not barstate.isconfirmed and (guideSide == BULLISH ? high >= nextTarget : low <= nextTarget)
     bool trendAgainst = guideSide == BULLISH ? entryTrendDirection >= 0 : entryTrendDirection <= 0
     if stopNow or targetNow
-        planWatchStatus := stopNow and targetNow ? 'แตะทั้ง SL/TP2' : stopNow ? 'แตะ SL' : 'แตะ TP2'
+        planWatchStatus := stopNow and targetNow ? 'แตะ SL และ TP ใหม่' : stopNow ? 'แตะ SL' : 'แตะ TP' + str.tostring(guideStage + 1)
         planWatchAction := stopNow and targetNow ? 'ตรวจออเดอร์: ไม่ทราบลำดับที่แตะ' : 'ตรวจสถานะออเดอร์จริงทันที'
         planWatchColor := stopNow ? #fb7185 : #34d399
     else if planBreakConfirmed
-        bool recovering = guideSide * (close - setupLevel) >= 0 and not barstate.isconfirmed
+        bool recovering = guideSide * (close - guideProtectedLevel) >= 0 and not barstate.isconfirmed
         planWatchStatus := recovering ? 'เริ่มฟื้น | รอปิดยืนยัน' : 'เสียทรงยืนยัน (Breakdown)'
         planWatchAction := recovering ? 'รอปิดกลับเข้าระดับเดิม' : 'งดเพิ่มไม้ / ทบทวนความเสี่ยง'
         planWatchColor := recovering ? color.orange : #fb7185
     else if livePlanBroken
         planWatchStatus := 'เริ่มเสียทรง | รอแท่งปิด'
-        planWatchAction := 'ยังไม่ยืนยัน / เฝ้า SL ' + priceText(guideStop)
+        planWatchAction := guideStage > 0 and entryBreakExitInput ? 'ออกส่วนที่เหลือถ้าปิดเสียระดับ ' + priceText(guideProtectedLevel) : 'ยังไม่ยืนยัน / เฝ้า SL ' + priceText(guideStop)
     else if trendAgainst
         planWatchStatus := barstate.isconfirmed ? 'แนวโน้มสวนแผน' : 'แนวโน้มเริ่มสวน | รอปิด'
         planWatchAction := 'งดเพิ่มไม้ / เฝ้า SL ' + priceText(guideStop)
 
-// Early watch is a live display, never an entry or a historical prediction.
-// Evaluate crossings every bar, mirroring structure detection including its optional wick filter.
 bool watchInternalUpCross = ta.crossover(close, internalHigh.currentLevel)
 bool watchInternalDownCross = ta.crossunder(close, internalLow.currentLevel)
 bool watchSwingUpCross = ta.crossover(close, swingHigh.currentLevel)
@@ -1126,26 +1079,28 @@ float closedTrend = barstate.isconfirmed ? (na(entryTrendLine) ? na : entryTrend
 float watchAtr = barstate.isconfirmed ? entryAtr : entryAtr[1]
 bool watchCooling = not na(lastExitBar) and bar_index - lastExitBar <= 3
 bool watchAllowed = entryWatchInput and entryEnabledInput and entryChartOK and not guideActive and not watchCooling and not na(closedTrend) and not na(watchAtr) and watchAtr > 0
-// A pending setup has a frozen ATR/extreme; PREP before a break has no defensible SL yet.
 bool pendingContext = entryEnabledInput and entryChartOK and setupSide != 0 and not guideActive and not watchCooling and bar_index - setupBar <= entryExpiryInput and not (not barstate.isconfirmed and (watchBullBreak or watchBearBreak))
 float watchReference = na
 float watchStop = na
 float watchRisk = na
+string watchRiskReason = ''
 float watchCancel = na
 int watchRemaining = na
 if pendingContext
     float previewExtreme = setupSide == BULLISH ? math.min(setupExtreme, low) : math.max(setupExtreme, high)
     float reference = math.round_to_mintick(close)
-    float structuralStop = previewExtreme - setupSide * 0.20 * setupAtr
+    float structuralStop = previewExtreme - setupSide * entryStopBufferInput * setupAtr
     float stopDistance = math.max(math.abs(reference - structuralStop), 0.80 * setupAtr)
     float rawStop = reference - setupSide * stopDistance
-    float stop = setupSide == BULLISH ? math.floor(rawStop / syminfo.mintick) * syminfo.mintick : math.ceil(rawStop / syminfo.mintick) * syminfo.mintick
+    float stop = roundStop(rawStop, setupSide, syminfo.mintick)
     float risk = math.abs(reference - stop)
+    [tp1, tp2, tp3, ordered] = targetPrices(setupSide, reference, risk, entryTargetLevels(setupSide, reference), math.max(syminfo.mintick, 0.05 * setupAtr), syminfo.mintick, entryRewardInput, entryRunnerRewardInput)
+    bool roomOK = setupSide * (tp1 - reference) >= math.max(syminfo.mintick, entryMinRewardInput * risk)
+    watchRiskReason := not ordered ? 'tick ใหญ่เกินจะแยก TP ในเพดาน R' : not roomOK ? 'แนวรับต้านขวางก่อน TP1 ขั้นต่ำ' : risk > 3.0 * setupAtr or risk < syminfo.mintick ? 'SL อยู่นอกช่วง 1 tick ถึง 3 ATR' : ''
     watchReference := reference
     watchStop := stop
     watchRisk := risk
     float rawCancel = setupLevel - setupSide * 0.20 * setupAtr
-    // First invalid tradable tick preserves the engine's strict close-beyond-band rule.
     float roundedCancel = math.round_to_mintick(rawCancel)
     watchCancel := math.round_to_mintick(setupSide == BULLISH ? (roundedCancel < rawCancel ? roundedCancel : roundedCancel - syminfo.mintick) : (roundedCancel > rawCancel ? roundedCancel : roundedCancel + syminfo.mintick))
     watchRemaining := math.max(0, entryExpiryInput - (bar_index - setupBar))
@@ -1153,7 +1108,6 @@ int watchSide = 0
 float watchLevel = na
 string watchStatus = ''
 if watchAllowed
-    // Any new break replaces an old retest in the real engine. Preview that event first.
     if not barstate.isconfirmed and (watchBullBreak or watchBearBreak)
         if watchBullBreak and watchBearBreak
             watchStatus := 'สัญญาณขัดแย้ง | รอแท่งปิด'
@@ -1184,13 +1138,11 @@ if watchAllowed
                 bool touched = low <= setupLevel + tolerance and high >= setupLevel - tolerance
                 bool reclaimed = setupSide == BULLISH ? close > setupLevel and close > open : close < setupLevel and close < open
                 bool notChasing = math.abs(close - setupLevel) <= setupAtr
-                bool riskOK = watchRisk <= 3.0 * setupAtr and watchRisk >= syminfo.mintick
-                if touched and reclaimed and notChasing
-                    watchStatus := not riskOK ? sideText + ' | SL ไกลเกินไป' : not barstate.isconfirmed ? sideText + ' | รอแท่งปิดยืนยัน' : sideText + ' | รอทดสอบระดับ'
+                if (setupRetested or touched) and reclaimed and notChasing
+                    watchStatus := watchRiskReason != '' ? sideText + ' | ' + watchRiskReason : not barstate.isconfirmed ? sideText + ' | รอแท่งปิดยืนยัน' : sideText + ' | รอทดสอบระดับ'
                 else if touched
                     watchStatus := sideText + (notChasing ? ' | รอราคากลับเข้าทิศ' : ' | รอราคาเข้ามาใกล้')
     else
-        // Only levels ahead of price within half a closed ATR qualify as early preparation.
         int side = closedTrend < 0 ? BULLISH : BEARISH
         float internalLevel = side == BULLISH ? internalHigh.currentLevel : internalLow.currentLevel
         float swingLevel = side == BULLISH ? swingHigh.currentLevel : swingLow.currentLevel
@@ -1205,7 +1157,6 @@ if watchAllowed
             watchLevel := nearInternal ? internalLevel : swingLevel
             watchStatus := (side == BULLISH ? 'เตรียมซื้อ' : 'เตรียมขาย') + ' | รอทะลุระดับ'
 
-// Keep one orange hint at the latest bar. It can withdraw; it never leaves past PREP labels.
 var line watchLine = na
 var label watchLabel = na
 if barstate.islastconfirmedhistory or barstate.islast
@@ -1222,7 +1173,6 @@ if barstate.islastconfirmedhistory or barstate.islast
             watchLine := line.new(bar_index, watchLevel, bar_index + 4, watchLevel, color = color.orange, style = line.style_dashed)
         watchLabel := label.new(bar_index + 4, watchDisplayLevel, watchText, color = color.new(watchColor, 12), textcolor = color.black, style = label.style_label_left, size = size.small)
 
-// Decision context is descriptive; neither higher-timeframe trend nor OB room enters the signal engine.
 nearestOpposingZone(array<orderBlock> blocks, int side, float reference) =>
     float bottom = na
     float top = na
@@ -1237,8 +1187,6 @@ nearestOpposingZone(array<orderBlock> blocks, int side, float reference) =>
                 distance := room
     [bottom, top, distance]
 
-// Cross-market context only: no signal filter, no fixed gold/silver or gold/DXY assumption.
-// Same-TF gaps remain missing. Only confirmed chart-bar snapshots reach the table.
 MARKET_CONTEXT_GROUP = 'ตลาดประกอบการตัดสินใจ'
 marketContextInput = input.bool(true, 'ดู Silver และดอลลาร์', group = MARKET_CONTEXT_GROUP)
 silverSymbolInput = input.symbol('OANDA:XAGUSD', 'สัญลักษณ์ Silver', group = MARKET_CONTEXT_GROUP)
@@ -1251,7 +1199,6 @@ marketRequestTf = timeframe.isseconds or timeframe.isminutes or timeframe.isdwm 
 [dxyMarketClose, dxyMarketEnd] = request.security(dxySymbolInput, marketRequestTf, [close, time_close], gaps = barmerge.gaps_on, lookahead = barmerge.lookahead_off, ignore_invalid_symbol = true)
 
 marketContextRow(float otherClose, int otherEnd, int length) =>
-    // Accept only a source close ending inside this chart bar, never a carried or future close.
     bool fresh = not na(otherClose) and otherClose > 0 and not na(otherEnd) and otherEnd > time and otherEnd <= time_close
     bool paired = fresh and nz(fresh[1], false) and otherEnd > otherEnd[1] and close > 0 and close[1] > 0
     float x = paired ? math.log(close / close[1]) : 0.0
@@ -1263,7 +1210,6 @@ marketContextRow(float otherClose, int otherEnd, int length) =>
     float sxx = math.sum(x * x, window)
     float syy = math.sum(y * y, window)
     float sxy = math.sum(x * y, window)
-    // Weighted Pearson moments use exactly the same valid pairs within the fixed chart-bar window.
     float vx = math.max(0.0, count * sxx - sx * sx)
     float vy = math.max(0.0, count * syy - sy * sy)
     float denominator = math.sqrt(vx * vy)
@@ -1305,7 +1251,7 @@ var label contextCancelLabel = na
 if barstate.islastconfirmedhistory or barstate.islast
     int contextSide = guideActive ? guideSide : pendingContext ? setupSide : watchSide != 0 ? watchSide : not na(closedTrend) ? (closedTrend < 0 ? BULLISH : BEARISH) : 0
     float contextReference = pendingContext ? watchReference : close
-    float contextRisk = guideActive ? math.abs(guideEntry - guideStop) : watchRisk
+    float contextRisk = guideActive ? guideInitialRisk : watchRisk
     [internalBottom, internalTop, internalRoom] = nearestOpposingZone(internalOrderBlocks, contextSide, contextReference)
     [swingBottom, swingTop, swingRoom] = nearestOpposingZone(swingOrderBlocks, contextSide, contextReference)
     bool useInternal = not na(internalRoom) and (na(swingRoom) or internalRoom <= swingRoom)
@@ -1320,7 +1266,6 @@ if barstate.islastconfirmedhistory or barstate.islast
     if not na(obstacleRoom)
         obstacleText += '\nห่าง ' + priceText(obstacleRoom) + ' ' + syminfo.currency + ' | ' + (na(obstacleR) ? 'ยังไม่มี R' : str.tostring(obstacleR, '#.##') + (guideActive ? 'R ของแผน' : 'R ประเมิน'))
 
-    // Latest objects only: no trail of provisional levels or hindsight PREP labels.
     line.delete(contextStructureLine)
     label.delete(contextStructureLabel)
     box.delete(contextObstacleBox)
@@ -1345,6 +1290,9 @@ if barstate.islastconfirmedhistory or barstate.islast
         if pendingContext and not na(watchCancel)
             contextCancelLine := line.new(bar_index, watchCancel, bar_index + 3, watchCancel, color = color.orange, style = line.style_dotted)
             contextCancelLabel := label.new(bar_index + 3, watchCancel, 'ยกเลิกเมื่อปิด ' + (setupSide == BULLISH ? '<= ' : '>= ') + priceText(watchCancel), style = label.style_label_left, color = color.new(color.orange, 88), textcolor = #b45309, size = size.small)
+        else if guideActive and guideStage > 0 and entryBreakExitInput
+            contextCancelLine := line.new(bar_index, guideProtectedLevel, bar_index + 3, guideProtectedLevel, color = color.orange, style = line.style_dotted)
+            contextCancelLabel := label.new(bar_index + 3, guideProtectedLevel, 'ออกส่วนที่เหลือเมื่อปิด ' + (guideSide == BULLISH ? '< ' : '> ') + priceText(guideProtectedLevel), style = label.style_label_left, color = color.new(color.orange, 88), textcolor = #b45309, size = size.small)
 
     if entryShowPanelInput
         string chartTf = timeframeText(timeframe.period)
@@ -1366,7 +1314,7 @@ if barstate.islastconfirmedhistory or barstate.islast
             reason := 'กำลังรอข้อมูลราคาให้เพียงพอ'
         else if guideActive
             status := planWatchStatus != '' ? planWatchStatus : guideSide == BULLISH ? 'BUY | แผนซื้อทำงาน' : 'SELL | แผนขายทำงาน'
-            reason := planWatchStatus != '' ? planWatchAction : tp1Touched ? 'แตะ TP1 แล้ว | ยังรอ SL / TP2' : 'คงแผน / ตรวจราคา SL และ TP'
+            reason := planWatchStatus != '' ? planWatchAction : guideStage >= 2 ? 'ถึง TP2 | SL ล็อก TP1 / ตามโครงสร้าง' : guideStage == 1 ? 'ถึง TP1 | SL คุ้มครองราคาเข้า / ตามโครงสร้าง' : 'รอ TP1 แล้วคุ้มครองทุน'
             statusColor := planWatchStatus != '' ? planWatchColor : guideSide == BULLISH ? #34d399 : #fb7185
         else if watchCooling
             status := 'พักรอจังหวะใหม่'
@@ -1375,7 +1323,7 @@ if barstate.islastconfirmedhistory or barstate.islast
             status := watchStatus != '' ? watchStatus : (setupSide == BULLISH ? 'BUY' : 'SELL') + ' | รอทดสอบระดับ'
             statusColor := color.orange
             if pendingContext
-                reason := setupSide * (close - setupLevel) < -0.20 * setupAtr ? 'งดเข้า / รอปิดยืนยันการยกเลิก' : bar_index == setupBar ? 'ทะลุยืนยันแล้ว | รอแท่งถัดไปทดสอบ' : not na(watchRisk) and watchRisk > 3.0 * setupAtr ? 'SL ประเมินไกลเกิน 3 ATR' : 'เวลารอทดสอบ: ' + (watchRemaining == 0 ? 'แท่งสุดท้าย' : str.tostring(watchRemaining) + ' แท่งที่เหลือ')
+                reason := setupSide * (close - setupLevel) < -0.20 * setupAtr ? 'งดเข้า / รอปิดยืนยันการยกเลิก' : bar_index == setupBar ? 'ทะลุยืนยันแล้ว | รอแท่งถัดไปทดสอบ' : watchRiskReason != '' ? 'งดเข้า / ' + watchRiskReason : 'เวลารอทดสอบ: ' + (watchRemaining == 0 ? 'แท่งสุดท้าย' : str.tostring(watchRemaining) + ' แท่งที่เหลือ')
             else
                 reason := setupSide != 0 ? 'แผนอาจเปลี่ยนเมื่อมีโครงสร้างใหม่' : 'รอปิดทะลุ แล้วกลับมาทดสอบ'
         else if tradeStatus == 'ยกเลิกจังหวะ: เสียทรงยืนยัน'
@@ -1388,11 +1336,14 @@ if barstate.islastconfirmedhistory or barstate.islast
         string levelsText = 'รอระดับราคาที่ชัดเจน'
         string riskText = 'ประเมิน SL หลังปิดทะลุระดับ'
         if guideActive
-            levelsText := 'จุดเข้า ' + priceText(guideEntry) + '\nอายุแผน: ' + str.tostring(math.max(0, entryHoldInput - (bar_index - signalBar))) + ' แท่งที่เหลือ'
-            riskText := 'SL ' + priceText(guideStop) + '\nTP1 ' + priceText(guideTp1) + ' | TP2 ' + priceText(guideTp2)
+            int remainingPercent = 100 - (guideStage >= 1 ? entryTp1PercentInput : 0) - (guideStage >= 2 ? entryTp2PercentInput : 0)
+            levelsText := 'จุดเข้า ' + priceText(guideEntry) + ' | เหลือตามแผน ' + str.tostring(remainingPercent) + '%\nอายุแผน: ' + str.tostring(math.max(0, entryHoldInput - (bar_index - signalBar))) + ' แท่งที่เหลือ'
+            riskText := 'SL ' + priceText(guideStop) + (stopMovedSignal ? ' (เริ่มแท่งถัดไป)' : '') + ' | 1R ' + priceText(guideInitialRisk) + '\nTP1 ' + priceText(guideTp1) + ' (' + str.tostring(entryTp1PercentInput) + '%)' + (guideStage >= 1 ? ' ✓' : '') + '\nTP2 ' + priceText(guideTp2) + ' (' + str.tostring(entryTp2PercentInput) + '%)' + (guideStage >= 2 ? ' ✓' : '') + '\nTP3 ' + priceText(guideTp3) + ' (' + str.tostring(100 - entryTp1PercentInput - entryTp2PercentInput) + '%)'
+            if guideStage > 0 and entryBreakExitInput
+                levelsText += '\nออกเมื่อปิด ' + (guideSide == BULLISH ? '< ' : '> ') + priceText(guideProtectedLevel)
         else if pendingContext
             levelsText := 'โซนรอทดสอบ ' + priceText(setupLevel - 0.20 * setupAtr) + ' - ' + priceText(setupLevel + 0.20 * setupAtr) + '\nยกเลิกเมื่อปิด ' + (setupSide == BULLISH ? '<= ' : '>= ') + priceText(watchCancel)
-            riskText := 'เข้า~ ' + priceText(watchReference) + ' | SL~ ' + priceText(watchStop) + '\n1R~ ' + priceText(watchRisk) + ' ' + syminfo.currency + ' | ค่าประเมิน'
+            riskText := 'เข้า~ ' + priceText(watchReference) + ' | SL~ ' + priceText(watchStop) + '\n1R~ ' + priceText(watchRisk) + ' ' + syminfo.currency + ' | ค่าประเมิน' + (watchRiskReason != '' ? '\nงดเข้า / ' + watchRiskReason : '')
         else if not na(watchLevel)
             levelsText := 'เฝ้าระดับ ' + priceText(watchLevel) + '\nรอยืนยันการทะลุ'
         else if contextSide != 0
@@ -1407,18 +1358,16 @@ if barstate.islastconfirmedhistory or barstate.islast
             float nextLevel = internalAhead and (not swingAhead or internalDistance <= swingDistance) ? internalLevel : swingAhead ? swingLevel : na
             levelsText := na(nextLevel) ? 'รอยอดหรือฐานใหม่ยืนยัน' : (contextSide == BULLISH ? 'เฝ้าเหนือ ' : 'เฝ้าใต้ ') + priceText(nextLevel) + '\nยังไม่มีจังหวะพร้อมเข้า'
         decisionRow(0, 'แนวโน้ม', chartTf + ' ' + direction + (higherContextOK ? ' | ' + timeframeText(higherTf) + ' ' + higherDirection : '\nไม่มี TF ใหญ่กว่า') + (higherContextOK and not na(higherClosedTrend) and not na(closedTrend) ? '\n' + (trendConflict ? 'สวนกัน' : 'ทิศเดียวกัน') : ''), trendColor, 'เปรียบเทียบแนวโน้มจากแท่งที่ปิดแล้วกับ TF ใหญ่ประมาณ 3 เท่า สีส้มคือสวนกัน เป็นข้อมูลประกอบ ไม่ใช่ตัวกรองจุดเข้า ถ้าอยู่ TF สูงสุดจะแสดงเฉพาะ TF ปัจจุบัน')
-        decisionRow(1, 'จังหวะ', status + '\n' + reason, statusColor, 'BUY/SELL ยืนยันหลังแท่งปิด สีส้มเป็นคำเตือนสดที่อาจเปลี่ยนได้ เสียทรงเมื่อราคาปิดผ่านระดับเดิม 0.2 ATR และค้างจนปิดกลับถึงระดับเดิม SL/TP ไม่ขยับ ถ้าแตะ SL/TP ระหว่างแท่งให้ตรวจออเดอร์จริง สคริปต์ไม่ได้อ่านสถานะโบรกเกอร์')
+        decisionRow(1, 'จังหวะ', status + '\n' + reason, statusColor, 'BUY/SELL หลังปิดทะลุ แล้วรอย่อ/เด้งทดสอบและปิดกลับทิศ สีส้มก่อนแท่งปิดยังไม่ยืนยัน หลัง TP1 ออกส่วนที่เหลือเมื่อปิดเสียแนวรับ/ต้านคุ้มครองตามตัวเลือก สคริปต์ไม่ได้อ่านสถานะโบรกเกอร์')
         decisionRow(2, 'โครงสร้าง', structureText, #cbd5e1, 'ไปต่อ = BOS, เปลี่ยนทิศ = CHoCH ย่อยคือโครงสร้างระยะสั้น หลักคือสวิงใหญ่ จำนวนแท่งนับตาม TF ที่เปิด เหตุการณ์เก่าไม่ใช่จุดเข้าใหม่')
         decisionRow(3, 'ระดับราคา', levelsText, pendingContext ? #fbbf24 : #e2e8f0, 'ยกเลิกแผนเมื่อราคาปิดถึงจุดที่ระบุ ไส้เทียนแตะอย่างเดียวไม่พอ แนวโน้มเปลี่ยนหรือหมดเวลาก็ยกเลิกได้')
-        decisionRow(4, guideActive ? 'แผน SL/TP' : 'ความเสี่ยง', riskText, pendingContext ? #fbbf24 : #e2e8f0, 'เครื่องหมาย ~ หมายถึงค่าประเมินที่ยังเปลี่ยนได้ หลัง BUY/SELL ยืนยันแล้ว จุดเข้า SL และ TP จะคงที่ 1R คือระยะระหว่างจุดเข้ากับ SL')
-        decisionRow(5, 'โซนข้างหน้า', obstacleText, na(obstacleRoom) ? #94a3b8 : obstacleColor, 'โซนรับต้านฝั่งตรงข้ามที่ใกล้ที่สุด วัดระยะจากราคาปัจจุบัน R เทียบระยะ SL ไม่ใช่กำไรขาดทุนบัญชี ไม่พบโซนหมายถึงข้อมูลยังไม่พอ ไม่ได้แปลว่าทางโล่ง')
+        decisionRow(4, guideActive ? 'แผน SL/TP' : 'ความเสี่ยง', riskText, pendingContext ? #fbbf24 : #e2e8f0, '~ คือค่าประเมิน TP เลือกจากโครงสร้าง/โซนก่อนเพดาน R แล้วล็อกตอนเข้า TP1 เลื่อน SL สู่ราคาเข้า TP2 ล็อกอย่างน้อย TP1 และตามฐาน/ยอดที่ยืนยันหลังเข้า SL ขยับเข้าหากำไรเท่านั้นและใช้แท่งถัดไป 1R อิง SL เริ่มต้น ไม่รวมต้นทุน ส่วนแบ่งเป็นแผน ไม่ใช่ fill จริง')
+        decisionRow(5, 'โซนข้างหน้า', obstacleText, na(obstacleRoom) ? #94a3b8 : obstacleColor, 'โซนรับต้านฝั่งตรงข้ามที่ใกล้ที่สุด วัดระยะจากราคาปัจจุบัน R เทียบระยะ SL เริ่มต้น ไม่ใช่กำไรขาดทุนบัญชี ไม่พบโซนหมายถึงข้อมูลยังไม่พอ ไม่ได้แปลว่าทางโล่ง')
 
         if marketContextInput
             decisionRow(6, 'เงิน / XAG', silverContextText, silverContextColor, silverSymbolInput + '\n' + marketContextTooltip)
             decisionRow(7, 'ดอลลาร์', dxyContextText, dxyContextColor, dxySymbolInput + '\n' + marketContextTooltip)
 
-//ALERTS
-//---------------------------------------------------------------------------------------------------------------------{
 alertcondition(currentAlerts.internalBullishBOS,        'Internal Bullish BOS',         'Internal Bullish BOS formed')
 alertcondition(currentAlerts.internalBullishCHoCH,      'Internal Bullish CHoCH',       'Internal Bullish CHoCH formed')
 alertcondition(currentAlerts.internalBearishBOS,        'Internal Bearish BOS',         'Internal Bearish BOS formed')
@@ -1440,6 +1389,11 @@ alertcondition(currentAlerts.equalLows,                 'Equal Lows',           
 alertcondition(currentAlerts.bullishFairValueGap,       'Bullish FVG',                  'Bullish FVG formed')
 alertcondition(currentAlerts.bearishFairValueGap,       'Bearish FVG',                  'Bearish FVG formed')
 
-//---------------------------------------------------------------------------------------------------------------------}
 alertcondition(entryAlertsInput and buySignal, 'BUY ยืนยันแล้ว', 'BUY ยืนยันแล้ว | {{ticker}} | จุดเข้าอ้างอิง {{close}} ดู SL/TP บนกราฟ')
 alertcondition(entryAlertsInput and sellSignal, 'SELL ยืนยันแล้ว', 'SELL ยืนยันแล้ว | {{ticker}} | จุดเข้าอ้างอิง {{close}} ดู SL/TP บนกราฟ')
+alertcondition(entryManagementAlertsInput and tp1Signal, 'TP1 แตะแล้ว', 'TP1 แตะแล้ว | {{ticker}} | ตรวจส่วนแบ่งปิดและสถานะแผนบนกราฟ')
+alertcondition(entryManagementAlertsInput and tp2Signal, 'TP2 แตะแล้ว', 'TP2 แตะแล้ว | {{ticker}} | ตรวจส่วนแบ่งปิดและสถานะแผนบนกราฟ')
+alertcondition(entryManagementAlertsInput and tp3Signal, 'TP3 แตะแล้ว', 'TP3 แตะแล้ว | {{ticker}} | จบแผนทุกส่วน')
+alertcondition(entryManagementAlertsInput and stopMovedSignal, 'SL เลื่อนแล้ว', 'SL เลื่อนแล้ว | {{ticker}} | ระดับใหม่บนกราฟใช้ตั้งแต่แท่งถัดไป')
+alertcondition(entryManagementAlertsInput and breakdownSignal, 'ออกเมื่อโครงสร้างเสียหลัง TP', 'แนวรับ/ต้านคุ้มครองเสียหลัง TP | {{ticker}} | ออกส่วนที่เหลือเมื่อปิด {{close}}')
+alertcondition(entryManagementAlertsInput and planExitSignal, 'จบแผน SL/TP', 'จบแผน SL/TP | {{ticker}} | ดูเหตุผลบนกราฟ ไม่ใช่การยืนยัน fill')
