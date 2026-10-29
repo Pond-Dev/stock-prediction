@@ -1,0 +1,473 @@
+//@version=6
+indicator("Trend Entries | Main Trend + Confirmation", shorttitle="TrendEntry", overlay=true, max_labels_count=10)
+
+// Symbol-agnostic price rules. EMA lengths count bars in each own timeframe.
+string trendGroup = "EMA trend in each timeframe"
+int fastLength = input.int(20, "Fast EMA", minval=1, maxval=500, group=trendGroup)
+int slowLength = input.int(50, "Slow EMA", minval=2, maxval=500, group=trendGroup)
+int slopeBars = input.int(3, "Slow EMA slope lookback", minval=1, maxval=100, group=trendGroup)
+
+string strengthGroup = "Chart trend strength"
+bool useAdx = input.bool(true, "Use ADX filter", group=strengthGroup)
+int diLength = input.int(14, "DI length", minval=1, maxval=100, group=strengthGroup)
+int adxSmoothing = input.int(14, "ADX smoothing", minval=1, maxval=100, group=strengthGroup)
+float adxThreshold = input.float(20.0, "Minimum ADX", minval=0.0, maxval=100.0, step=0.5, group=strengthGroup)
+
+string entryGroup = "Entry confirmation"
+bool useHtf = input.bool(true, "Trade with main trend + confirmation", group=entryGroup, tooltip="Requires chart direction, confirmation and main trend to agree. On a 15-minute chart Auto uses 1 hour to confirm the 4-hour main trend. Off uses only the chart trend.")
+string mainHtfMode = input.string("Auto", "Main trend timeframe mode", options=["Auto", "Manual"], group=entryGroup)
+string manualMainHtf = input.timeframe("240", "Manual main trend timeframe", group=entryGroup, tooltip="Auto selects approximately 16x the chart interval. The main timeframe must be strictly above the confirmation timeframe.")
+string htfMode = input.string("Auto", "Confirmation timeframe mode", options=["Auto", "Manual"], group=entryGroup)
+string manualHtf = input.timeframe("60", "Manual confirmation timeframe", group=entryGroup, tooltip="Auto selects approximately 4x the chart interval. Confirmation must be strictly above the chart and below the main trend timeframe.")
+int maxPullbackBars = input.int(6, "Bars allowed after pullback", minval=1, maxval=50, group=entryGroup)
+int cooldownBars = input.int(4, "Minimum bars between signals", minval=1, maxval=100, group=entryGroup)
+
+string roomGroup = "Support / resistance"
+bool useRoomFilter = input.bool(true, "Check room to confirmed swing levels", group=roomGroup)
+int pivotBars = input.int(3, "Pivot bars on each side", minval=1, maxval=20, group=roomGroup)
+bool allowUnknownRoom = input.bool(false, "Allow entries with no known level ahead", group=roomGroup, tooltip="No known level is unknown room, not proof that the path is clear.")
+float roomBufferAtr = input.float(0.1, "Target buffer before level (ATR)", minval=0, step=0.05, group=roomGroup)
+
+string planGroup = "Entry / SL / TP reference plan"
+int atrLength = input.int(14, "ATR length", minval=1, maxval=100, group=planGroup)
+float stopBufferAtr = input.float(0.25, "Stop buffer beyond pullback (ATR)", minval=0, step=0.05, group=planGroup)
+float targetR = input.float(2.0, "Target reward / stop distance", minval=0.1, step=0.1, group=planGroup)
+float minNetR = input.float(1.5, "Minimum reward / risk after cost buffer", minval=0.1, step=0.1, group=planGroup)
+float costBuffer = input.float(0.0, "Round-trip cost buffer in PRICE units", minval=0, group=planGroup, tooltip="Set for this symbol and broker: spread, slippage and commissions converted to price units. Zero means costs are not included. This is not a live spread feed.")
+int maxPlanBars = input.int(32, "Reference plan expires after bars", minval=1, maxval=500, group=planGroup)
+
+string sizeGroup = "Optional position size - manual contract values"
+string quantityUnit = input.string("units", "Quantity unit", options=["units", "shares", "contracts", "lots", "coins"], group=sizeGroup)
+string riskCurrency = input.string("USD", "Risk currency label", group=sizeGroup, tooltip="A display label only; no currency conversion. Risk budget and value per unit must both be in this currency.")
+float riskCash = input.float(0.0, "Risk budget per signal (0 = unset)", minval=0, group=sizeGroup)
+float valuePerUnit = input.float(0.0, "Cash value of 1.0 price move per quantity unit", minval=0, group=sizeGroup, tooltip="Use your broker's specification in the SAME currency as the risk budget. Examples: 1 share, 1 futures contract, 1 broker lot, or 1 coin. This is a linear price-risk estimate; inverse/nonlinear contracts need their own sizing model. Zero disables sizing.")
+float qtyStep = input.float(1.0, "Broker quantity step", minval=0.00000001, group=sizeGroup)
+float minQty = input.float(1.0, "Broker minimum quantity", minval=0.00000001, group=sizeGroup)
+
+string newsGroup = "Manual news times - no automatic calendar"
+int newsBefore = input.int(30, "Block minutes BEFORE event", minval=0, maxval=240, group=newsGroup)
+int newsAfter = input.int(15, "Block minutes AFTER event", minval=0, maxval=240, group=newsGroup)
+bool event1Enabled = input.bool(false, "Use event 1", inline="news1", group=newsGroup)
+int event1Time = input.time(0, "Time 1", inline="news1", group=newsGroup)
+bool event2Enabled = input.bool(false, "Use event 2", inline="news2", group=newsGroup)
+int event2Time = input.time(0, "Time 2", inline="news2", group=newsGroup)
+bool event3Enabled = input.bool(false, "Use event 3", inline="news3", group=newsGroup)
+int event3Time = input.time(0, "Time 3", inline="news3", group=newsGroup)
+
+string displayGroup = "การแสดงผล"
+bool showEma = input.bool(true, "แสดงเส้น EMA", group=displayGroup)
+bool showBackground = input.bool(true, "แสดงสีพื้นตามเทรนด์ใหญ่ย้อนหลัง", group=displayGroup)
+bool colorCandles = input.bool(false, "เปลี่ยนสีแท่งเทียนตามแนวโน้ม", group=displayGroup)
+bool showMarkers = input.bool(false, "แสดงจุดเปลี่ยนแนวโน้ม UP / DOWN", group=displayGroup)
+bool showEntries = input.bool(true, "แสดงป้ายจุดเข้า BUY / SELL", group=displayGroup)
+bool showLevels = input.bool(false, "แสดงแนวรับ–แนวต้านจากสวิง", group=displayGroup)
+bool showPlan = input.bool(true, "แสดงเส้นราคาเข้า / SL / TP", group=displayGroup)
+bool showStatusLabel = input.bool(true, "แสดงสถานะใกล้แท่งล่าสุด", group=displayGroup)
+bool showPriceLabels = input.bool(true, "แสดงชื่อกำกับเส้นราคา", group=displayGroup)
+int labelOffsetBars = input.int(3, "ระยะป้ายจากแท่งล่าสุด (แท่ง)", minval=1, maxval=50, group=displayGroup)
+string labelSizeChoice = input.string("ปกติ", "ขนาดตัวอักษร", options=["เล็ก", "ปกติ", "ใหญ่"], group=displayGroup)
+
+if fastLength >= slowLength
+    runtime.error("Fast EMA must be shorter than Slow EMA.")
+if (event1Enabled and event1Time <= 0) or (event2Enabled and event2Time <= 0) or (event3Enabled and event3Time <= 0)
+    runtime.error("Set a date and time for every enabled manual news event.")
+
+// Offset EVERY returned value inside the requested higher-timeframe context.
+f_htfSnapshot() =>
+    float fast = ta.ema(close, fastLength)
+    float slow = ta.ema(close, slowLength)
+    bool ready = bar_index >= slowLength + slopeBars - 1 and not na(slow[slopeBars])
+    bool bullish = ready and fast > slow and close > slow and slow > slow[slopeBars]
+    bool bearish = ready and fast < slow and close < slow and slow < slow[slopeBars]
+    int side = bullish ? 1 : bearish ? -1 : 0
+    [side[1], ready[1]]
+
+f_nearestLevels(array<float> highs, array<float> lows, float price) =>
+    float resistance = na
+    float support = na
+    for level in highs
+        if level >= price and (na(resistance) or level < resistance)
+            resistance := level
+    for level in lows
+        if level <= price and (na(support) or level > support)
+            support := level
+    [resistance, support]
+
+f_eventBlocks(bool enabled, int eventTime) =>
+    // Check the full signal bar, including an event occurring before its close.
+    enabled and eventTime > 0 and time <= eventTime + newsAfter * 60000 and time_close >= eventTime - newsBefore * 60000
+
+f_price(float price) =>
+    na(price) ? "-" : str.tostring(price, format.mintick)
+
+f_timeframeText(string period) =>
+    float minutes = str.tonumber(period)
+    na(minutes) ? period : minutes >= 60 and minutes % 60 == 0 ? str.tostring(minutes / 60, "#") + " ชม." : str.tostring(minutes, "#") + " นาที"
+
+f_directionText(int side) =>
+    side == 1 ? "ขึ้น" : side == -1 ? "ลง" : "ยังไม่ชัด"
+
+// Translate presentation only. Trading states and alert conditions stay separate.
+f_entryText(string state) =>
+    switch state
+        "USE STANDARD TIME CHART" => "ใช้กราฟแท่งเทียนตามเวลา"
+        "INVALID HTF: SELECT HIGHER / OFF" => "เลือกกรอบเวลายืนยันให้สูงกว่ากราฟ"
+        "INVALID MAIN HTF" => "เลือกกรอบเทรนด์ใหญ่ให้สูงกว่ากรอบยืนยัน"
+        "WAIT: HTF DATA" => "รอข้อมูลเทรนด์ใหญ่และกรอบยืนยัน"
+        "WAIT: MAIN TREND UNCLEAR" => "เทรนด์ใหญ่ยังไม่ชัด · รอก่อน"
+        "WARMING UP" => "รอข้อมูลเพิ่ม"
+        "BLOCKED: MANUAL NEWS" => "พักสัญญาณใหม่: ช่วงข่าว"
+        "REFERENCE PLAN ACTIVE" => "ติดตามแผนเดิม"
+        "PLAN ENDED; WAIT NEW SETUP" => "แผนเดิมจบแล้ว · รอจังหวะใหม่"
+        "COOLDOWN" => "เว้นช่วงหลังสัญญาณก่อน"
+        "WAIT: TREND UNCLEAR" => "ยังไม่มีสัญญาณเข้า"
+        "WAIT: HIGHER TF TREND" => "รอกรอบยืนยันตรงกับเทรนด์ใหญ่"
+        "WAIT: CHART ALIGNMENT" => "รอกราฟเข้ากลับมาตามเทรนด์ใหญ่"
+        "WAIT: NEW PULLBACK" => "รอราคาย่อกลับ"
+        "PULLBACK EXPIRED" => "จังหวะย่อหมดอายุ · รอใหม่"
+        "BLOCKED: S/R UNKNOWN" => "รอแนวรับ–แนวต้านด้านหน้า"
+        "BLOCKED: REWARD / RISK" => "ระยะถึงเป้ายังไม่ผ่านเกณฑ์"
+        "BLOCKED: BELOW MIN QTY" => "งบเสี่ยงไม่พอขนาดขั้นต่ำ"
+        "BUY: CLOSE CONFIRMED" => "BUY ยืนยันจากแท่งปิดล่าสุด"
+        "SELL: CLOSE CONFIRMED" => "SELL ยืนยันจากแท่งปิดล่าสุด"
+        "ARMED BUY: WAIT CONFIRM" => "รอแท่งปิดยืนยัน BUY"
+        "ARMED SELL: WAIT CONFIRM" => "รอแท่งปิดยืนยัน SELL"
+        => "รอจังหวะเข้า"
+
+f_planText(string state) =>
+    switch state
+        "BUY PLAN ACTIVE" => "ติดตามแผน BUY"
+        "SELL PLAN ACTIVE" => "ติดตามแผน SELL"
+        "TP TOUCHED" => "ราคาแตะเป้าหมายเดิม"
+        "SL TOUCHED" => "ราคาแตะจุดตัดขาดทุนเดิม"
+        "BOTH TOUCHED / ORDER UNKNOWN" => "แตะทั้ง SL และ TP · ไม่ทราบลำดับ"
+        "EXPIRED" => "แผนเดิมหมดอายุ"
+        => "ยังไม่มีแผน"
+
+f_updateLabel(label existing, int x, float y, string labelText, color background, string details, string fontSize) =>
+    label result = existing
+    if na(result)
+        result := label.new(x, y, labelText, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=background, textcolor=color.white, size=fontSize, textalign=text.align_left, tooltip=details)
+    else
+        label.set_xy(result, x, y)
+        label.set_text(result, labelText)
+        label.set_color(result, background)
+        label.set_tooltip(result, details)
+        label.set_size(result, fontSize)
+    result
+
+// Calculate every bar, including the open bar. Commit the state only at close.
+float fastEma = ta.ema(close, fastLength)
+float slowEma = ta.ema(close, slowLength)
+[_, _, adx] = ta.dmi(diLength, adxSmoothing)
+float atr = ta.atr(atrLength)
+float pivotHigh = ta.pivothigh(high, pivotBars, pivotBars)
+float pivotLow = ta.pivotlow(low, pivotBars, pivotBars)
+// main_period always describes the parent chart, including inside requests.
+// Guard tick intervals before conversion: they have no duration in seconds.
+string chartTimeframe = timeframe.main_period
+bool isTimeBased = not str.endswith(chartTimeframe, "T")
+float chartSeconds = chart.is_standard and isTimeBased ? timeframe.in_seconds(chartTimeframe) : na
+bool entryChartOk = chart.is_standard and isTimeBased and not na(chartSeconds) and chartSeconds > 0
+string manualSelection = manualHtf == "" ? chartTimeframe : manualHtf
+string selectedHtf = htfMode == "Auto" and entryChartOk ? timeframe.from_seconds(int(math.min(chartSeconds * 4, timeframe.in_seconds("12M")))) : manualSelection
+bool htfIsTimeBased = not str.endswith(selectedHtf, "T")
+float selectedHtfSeconds = entryChartOk and htfIsTimeBased ? timeframe.in_seconds(selectedHtf) : na
+bool htfValid = not na(chartSeconds) and not na(selectedHtfSeconds) and selectedHtfSeconds > chartSeconds
+string manualMainSelection = manualMainHtf == "" ? chartTimeframe : manualMainHtf
+string selectedMainHtf = mainHtfMode == "Auto" and entryChartOk ? timeframe.from_seconds(int(math.min(chartSeconds * 16, timeframe.in_seconds("12M")))) : manualMainSelection
+bool mainHtfIsTimeBased = not str.endswith(selectedMainHtf, "T")
+float selectedMainHtfSeconds = entryChartOk and mainHtfIsTimeBased ? timeframe.in_seconds(selectedMainHtf) : na
+bool mainHtfValid = htfValid and not na(selectedMainHtfSeconds) and selectedMainHtfSeconds > selectedHtfSeconds
+int htfSide = 0
+bool htfReady = false
+if useHtf and entryChartOk and htfValid
+    [requestedSide, requestedReady] = request.security(syminfo.tickerid, selectedHtf, f_htfSnapshot(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on)
+    htfSide := requestedSide
+    htfReady := requestedReady
+int mainHtfSide = 0
+bool mainHtfReady = false
+if useHtf and entryChartOk and mainHtfValid
+    [requestedMainSide, requestedMainReady] = request.security(syminfo.tickerid, selectedMainHtf, f_htfSnapshot(), gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on)
+    mainHtfSide := requestedMainSide
+    mainHtfReady := requestedMainReady
+bool newsBlocked = f_eventBlocks(event1Enabled, event1Time) or f_eventBlocks(event2Enabled, event2Time) or f_eventBlocks(event3Enabled, event3Time)
+bool anyNewsConfigured = event1Enabled or event2Enabled or event3Enabled
+bool futureNewsConfigured = (event1Enabled and event1Time + newsAfter * 60000 >= time_close) or (event2Enabled and event2Time + newsAfter * 60000 >= time_close) or (event3Enabled and event3Time + newsAfter * 60000 >= time_close)
+bool sizingEnabled = riskCash > 0 and valuePerUnit > 0
+
+bool enoughHistory = bar_index >= slowLength + slopeBars - 1 and not na(slowEma[slopeBars])
+bool dataReady = enoughHistory and (not useAdx or not na(adx))
+bool strengthOk = not useAdx or adx >= adxThreshold
+bool uptrend = dataReady and strengthOk and fastEma > slowEma and close > slowEma and slowEma > slowEma[slopeBars]
+bool downtrend = dataReady and strengthOk and fastEma < slowEma and close < slowEma and slowEma < slowEma[slopeBars]
+int candidateTrend = uptrend ? 1 : downtrend ? -1 : 0
+
+// 1 = up, -1 = down, 0 = unclear. The open bar retains the last closed state.
+var int trend = 0
+var bool confirmedReady = false
+var float confirmedAdx = na
+var int confirmedHtfSide = 0
+var bool confirmedHtfReady = false
+var int confirmedMainHtfSide = 0
+var bool confirmedMainHtfReady = false
+var float confirmedClose = na
+var float confirmedFastEma = na
+if barstate.isconfirmed
+    confirmedReady := dataReady
+    trend := dataReady ? candidateTrend : 0
+    confirmedAdx := adx
+    confirmedHtfSide := htfSide
+    confirmedHtfReady := htfReady
+    confirmedMainHtfSide := mainHtfSide
+    confirmedMainHtfReady := mainHtfReady
+    confirmedClose := close
+    confirmedFastEma := fastEma
+
+// The main direction remains visible during a lower-timeframe pullback.
+// Confirmation and chart direction gate new entries, not the main headline.
+int displayTrend = useHtf ? confirmedMainHtfSide : trend
+bool displayReady = useHtf ? mainHtfValid and confirmedMainHtfReady : confirmedReady
+
+// Only already-confirmed pivots are available. Keep the latest 20 on each side.
+var array<float> swingHighs = array.new<float>()
+var array<float> swingLows = array.new<float>()
+var float nearestResistance = na
+var float nearestSupport = na
+
+// A setup must arm on one closed bar and trigger on a later closed bar.
+var int pendingSide = 0
+var int armedBar = na
+var float pullbackExtreme = na
+var int lastSignalBar = na
+var string entryStatus = "WARMING UP"
+
+// A reference plan is not an order or a record of a broker fill.
+var int activeSide = 0
+var int planBar = na
+var float planEntry = na
+var float planStop = na
+var float planTarget = na
+var float planQty = na
+var float planNetR = na
+var string planStatus = "NO SIGNAL"
+int entrySignal = 0
+bool planClosed = false
+bool setupConsumed = false
+bool htfMatches = not useHtf or (mainHtfValid and htfReady and mainHtfReady and mainHtfSide != 0 and htfSide == mainHtfSide and trend == mainHtfSide)
+bool cooldownOk = na(lastSignalBar) or bar_index - lastSignalBar >= cooldownBars
+bool entryDataReady = dataReady and not na(atr) and atr > 0
+bool touchedBand = low <= math.max(fastEma, slowEma) and high >= math.min(fastEma, slowEma)
+
+if barstate.isconfirmed
+    if not na(pivotHigh)
+        array.push(swingHighs, pivotHigh)
+        if array.size(swingHighs) > 20
+            array.shift(swingHighs)
+    if not na(pivotLow)
+        array.push(swingLows, pivotLow)
+        if array.size(swingLows) > 20
+            array.shift(swingLows)
+    [nextResistance, nextSupport] = f_nearestLevels(swingHighs, swingLows, close)
+    nearestResistance := nextResistance
+    nearestSupport := nextSupport
+
+    // Entry is at signal close: never use that same candle's earlier extremes
+    // to claim the new plan hit SL or TP. A later bar can touch both: ambiguous.
+    if activeSide != 0 and bar_index > planBar
+        bool stopTouched = activeSide == 1 ? low <= planStop : high >= planStop
+        bool targetTouched = activeSide == 1 ? high >= planTarget : low <= planTarget
+        bool expired = bar_index - planBar >= maxPlanBars
+        if stopTouched or targetTouched or expired
+            planStatus := stopTouched and targetTouched ? "BOTH TOUCHED / ORDER UNKNOWN" : stopTouched ? "SL TOUCHED" : targetTouched ? "TP TOUCHED" : "EXPIRED"
+            activeSide := 0
+            planClosed := true
+
+    entryStatus := not entryChartOk ? "USE STANDARD TIME CHART" : useHtf and not htfValid ? "INVALID HTF: SELECT HIGHER / OFF" : useHtf and not mainHtfValid ? "INVALID MAIN HTF" : not entryDataReady ? "WARMING UP" : newsBlocked ? "BLOCKED: MANUAL NEWS" : activeSide != 0 ? "REFERENCE PLAN ACTIVE" : planClosed ? "PLAN ENDED; WAIT NEW SETUP" : useHtf and (not mainHtfReady or not htfReady) ? "WAIT: HTF DATA" : useHtf and mainHtfSide == 0 ? "WAIT: MAIN TREND UNCLEAR" : useHtf and htfSide != mainHtfSide ? "WAIT: HIGHER TF TREND" : useHtf and trend != mainHtfSide ? "WAIT: CHART ALIGNMENT" : not cooldownOk ? "COOLDOWN" : trend == 0 ? "WAIT: TREND UNCLEAR" : "WAIT: NEW PULLBACK"
+    bool canPrepare = entryChartOk and entryDataReady and not newsBlocked and activeSide == 0 and not planClosed and cooldownOk and trend != 0 and htfMatches
+
+    if pendingSide != 0
+        bool setupExpired = bar_index - armedBar > maxPullbackBars
+        if not canPrepare or trend != pendingSide or setupExpired
+            pendingSide := 0
+            armedBar := na
+            pullbackExtreme := na
+            setupConsumed := true
+            if setupExpired and canPrepare
+                entryStatus := "PULLBACK EXPIRED"
+        else
+            pullbackExtreme := pendingSide == 1 ? math.min(pullbackExtreme, low) : math.max(pullbackExtreme, high)
+            bool longTrigger = pendingSide == 1 and close > fastEma and close > high[1] and close > open
+            bool shortTrigger = pendingSide == -1 and close < fastEma and close < low[1] and close < open
+            if bar_index > armedBar and (longTrigger or shortTrigger)
+                int side = pendingSide
+                float entry = math.round_to_mintick(close)
+                float stopRaw = pullbackExtreme - side * atr * stopBufferAtr
+                float stop = side == 1 ? math.floor(stopRaw / syminfo.mintick) * syminfo.mintick : math.ceil(stopRaw / syminfo.mintick) * syminfo.mintick
+                float riskDistance = side * (entry - stop)
+                float levelAhead = side == 1 ? nearestResistance : nearestSupport
+                bool knownRoom = not na(levelAhead)
+                float target = entry + side * riskDistance * targetR
+                if useRoomFilter and knownRoom
+                    float levelTarget = levelAhead - side * atr * roomBufferAtr
+                    target := side == 1 ? math.min(target, levelTarget) : math.max(target, levelTarget)
+                target := side == 1 ? math.floor(target / syminfo.mintick) * syminfo.mintick : math.ceil(target / syminfo.mintick) * syminfo.mintick
+                float rewardDistance = side * (target - entry)
+                float netRisk = riskDistance + costBuffer
+                float netReward = rewardDistance - costBuffer
+                float netR = netRisk > 0 ? netReward / netRisk : na
+                float quantity = sizingEnabled and netRisk > 0 ? math.floor((riskCash / (netRisk * valuePerUnit)) / qtyStep) * qtyStep : na
+                bool roomOk = not useRoomFilter or knownRoom or allowUnknownRoom
+                bool riskOk = riskDistance >= syminfo.mintick and rewardDistance >= syminfo.mintick and netReward > 0 and netR >= minNetR
+                bool sizeOk = not sizingEnabled or (not na(quantity) and quantity >= minQty)
+                if roomOk and riskOk and sizeOk
+                    entrySignal := side
+                    activeSide := side
+                    planBar := bar_index
+                    planEntry := entry
+                    planStop := stop
+                    planTarget := target
+                    planQty := quantity
+                    planNetR := netR
+                    planStatus := side == 1 ? "BUY PLAN ACTIVE" : "SELL PLAN ACTIVE"
+                    lastSignalBar := bar_index
+                    entryStatus := side == 1 ? "BUY: CLOSE CONFIRMED" : "SELL: CLOSE CONFIRMED"
+                else
+                    entryStatus := not roomOk ? "BLOCKED: S/R UNKNOWN" : not riskOk ? "BLOCKED: REWARD / RISK" : "BLOCKED: BELOW MIN QTY"
+                // A trigger attempt consumes the setup, including rejected ones.
+                pendingSide := 0
+                armedBar := na
+                pullbackExtreme := na
+                setupConsumed := true
+
+    if pendingSide == 0 and canPrepare and not setupConsumed and entrySignal == 0
+        // Require a fresh approach from outside the EMA band. Staying inside
+        // the band cannot repeatedly re-arm an expired or consumed setup.
+        bool longPullback = trend == 1 and trend[1] == 1 and low[1] > fastEma[1] and touchedBand and close > slowEma
+        bool shortPullback = trend == -1 and trend[1] == -1 and high[1] < fastEma[1] and touchedBand and close < slowEma
+        if longPullback or shortPullback
+            pendingSide := longPullback ? 1 : -1
+            armedBar := bar_index
+            pullbackExtreme := longPullback ? low : high
+    if pendingSide != 0
+        entryStatus := pendingSide == 1 ? "ARMED BUY: WAIT CONFIRM" : "ARMED SELL: WAIT CONFIRM"
+
+// Initial warm-up does not create a change event. Re-entering a trend from
+// neutral is a new event; a continuing trend does not repeat its marker.
+bool trendChanged = barstate.isconfirmed and displayReady and displayReady[1] and displayTrend != displayTrend[1]
+bool turnedUp = trendChanged and displayTrend == 1
+bool turnedDown = trendChanged and displayTrend == -1
+bool turnedNeutral = trendChanged and displayTrend == 0
+
+color upColor = color.rgb(0, 166, 118)
+color downColor = color.rgb(230, 70, 80)
+color neutralColor = color.rgb(125, 135, 150)
+color trendColor = displayTrend == 1 ? upColor : displayTrend == -1 ? downColor : neutralColor
+color upLabelColor = color.rgb(0, 115, 82)
+color downLabelColor = color.rgb(175, 45, 60)
+color statusLabelColor = displayTrend == 1 ? upLabelColor : displayTrend == -1 ? downLabelColor : color.rgb(80, 91, 109)
+
+// Alert placeholders must stay within the first 20 plot outputs. Keep these
+// before ALL visual outputs; they remain available when visuals are hidden.
+plot(entrySignal, title="Entry signal", display=display.data_window)
+plot(planEntry, title="Plan entry", display=display.data_window)
+plot(planStop, title="Plan stop", display=display.data_window)
+plot(planTarget, title="Plan target", display=display.data_window)
+
+// EMA curves intentionally follow the live price; signals and status do not.
+plot(showEma ? fastEma : na, title="Fast EMA", color=color.orange, linewidth=2)
+plot(showEma ? slowEma : na, title="Slow EMA", color=color.blue, linewidth=2)
+bgcolor(showBackground and displayReady ? color.new(trendColor, 95) : na, title="Confirmed main trend background")
+barcolor(colorCandles and displayReady ? trendColor : na, title="Confirmed main trend candles")
+
+plotshape(showMarkers and turnedUp, title="Trend turns up", style=shape.labelup, location=location.belowbar, color=upColor, text="UP", textcolor=color.white, size=size.tiny)
+plotshape(showMarkers and turnedDown, title="Trend turns down", style=shape.labeldown, location=location.abovebar, color=downColor, text="DOWN", textcolor=color.white, size=size.tiny)
+plotshape(showMarkers and turnedNeutral, title="Trend becomes unclear", style=shape.circle, location=location.abovebar, color=neutralColor, size=size.tiny)
+plotshape(showEntries and entrySignal == 1, title="Confirmed BUY entry", style=shape.labelup, location=location.belowbar, color=upColor, text="BUY", textcolor=color.white, size=size.small)
+plotshape(showEntries and entrySignal == -1, title="Confirmed SELL entry", style=shape.labeldown, location=location.abovebar, color=downColor, text="SELL", textcolor=color.white, size=size.small)
+plot(showLevels ? nearestResistance : na, title="Known resistance", color=color.new(downColor, 45), style=plot.style_stepline, display=display.pane)
+plot(showLevels ? nearestSupport : na, title="Known support", color=color.new(upColor, 45), style=plot.style_stepline, display=display.pane)
+bool drawPlan = showPlan and (activeSide != 0 or planClosed)
+plot(drawPlan ? planEntry : na, title="Entry reference", color=color.blue, linewidth=2, style=plot.style_linebr, display=display.pane)
+plot(drawPlan ? planStop : na, title="SL reference", color=downColor, linewidth=2, style=plot.style_linebr, display=display.pane)
+plot(drawPlan ? planTarget : na, title="TP reference", color=upColor, linewidth=2, style=plot.style_linebr, display=display.pane)
+
+// Data Window values use the same closed-bar snapshot as the status label.
+plot(confirmedReady ? trend : na, title="Confirmed trend (1 up / 0 unclear / -1 down)", display=display.data_window)
+plot(confirmedAdx, title="Confirmed ADX", display=display.data_window)
+plot(activeSide, title="Active plan side", display=display.data_window)
+plot(planQty, title="Plan quantity", display=display.data_window)
+plot(planNetR, title="Plan net R", display=display.data_window)
+plot(useHtf and confirmedMainHtfReady ? confirmedMainHtfSide : na, title="Confirmed main trend", display=display.data_window)
+plot(useHtf and confirmedHtfReady ? confirmedHtfSide : na, title="Confirmed confirmation trend", display=display.data_window)
+
+// Reuse at most four objects at the latest bar; no fixed-position dashboard.
+var label statusLabel = na
+var label entryPriceLabel = na
+var label stopPriceLabel = na
+var label targetPriceLabel = na
+if barstate.islast
+    int labelX = bar_index + labelOffsetBars
+    string fontSize = labelSizeChoice == "เล็ก" ? size.small : labelSizeChoice == "ใหญ่" ? size.large : size.normal
+    bool activePlanVisible = showPlan and activeSide != 0
+    float visualAtr = math.max(nz(atr, high - low), syminfo.mintick * 10)
+    float labelTop = activePlanVisible ? math.max(high, math.max(planEntry, math.max(planStop, planTarget))) : high
+    string mainTfText = f_timeframeText(selectedMainHtf)
+    string confirmTfText = f_timeframeText(selectedHtf)
+    string chartTfText = f_timeframeText(chartTimeframe)
+    string stateText = not useHtf ? chartTfText + " · เทรนด์กราฟ" + f_directionText(trend) : not mainHtfValid ? "กรอบเวลาไม่ถูกต้อง" : not displayReady ? mainTfText + " · รอข้อมูลเทรนด์ใหญ่" : displayTrend == 1 ? mainTfText + " ↑ เทรนด์ใหญ่ขึ้น · มอง BUY" : displayTrend == -1 ? mainTfText + " ↓ เทรนด์ใหญ่ลง · มอง SELL" : mainTfText + " — เทรนด์ใหญ่ยังไม่ชัด"
+    string confirmationText = not useHtf ? "ปิดตัวกรองเทรนด์ใหญ่" : not htfValid ? confirmTfText + " · ต้องสูงกว่ากราฟเข้า" : not confirmedHtfReady ? confirmTfText + " · รอข้อมูลยืนยัน" : confirmTfText + " " + f_directionText(confirmedHtfSide) + (displayReady and displayTrend != 0 and confirmedHtfSide == displayTrend ? " · ทิศตรงกัน" : " · ยังไม่ยืนยัน")
+    bool localAgainst = confirmedReady and displayReady and displayTrend != 0 and trend == -displayTrend
+    bool localRetracing = confirmedReady and displayReady and displayTrend != 0 and (displayTrend == 1 ? confirmedClose < confirmedFastEma : confirmedClose > confirmedFastEma)
+    string chartPhase = not confirmedReady ? "รอข้อมูล" : not useHtf or not displayReady or displayTrend == 0 ? "เทรนด์" + f_directionText(trend) : localAgainst ? "สวนเทรนด์ใหญ่ · รอก่อน" : localRetracing ? "ย่อ/พักตัว · รอยืนยัน" : trend == displayTrend ? "ทิศทางตรงกับเทรนด์ใหญ่" : "ยังไม่ยืนยันตามเทรนด์ใหญ่"
+    // entryStatus persists into the next open bar. Only entrySignal identifies
+    // a new signal; an existing plan is explicitly described as an old plan.
+    string actionText = entrySignal == 1 ? "BUY · ยืนยันแท่งปิด" : entrySignal == -1 ? "SELL · ยืนยันแท่งปิด" : activeSide == 1 ? "ติดตามแผน BUY เดิม" : activeSide == -1 ? "ติดตามแผน SELL เดิม" : newsBlocked ? "พักสัญญาณใหม่: ช่วงข่าว" : planClosed ? f_planText(planStatus) : f_entryText(entryStatus)
+    if activeSide != 0 and useHtf and confirmedMainHtfReady and confirmedMainHtfSide != activeSide
+        actionText += " · เทรนด์ใหญ่ไม่หนุนแล้ว"
+    string adxText = na(confirmedAdx) ? "รอข้อมูล" : str.tostring(confirmedAdx, "0.0")
+    string filterText = useAdx ? "เกณฑ์ " + str.tostring(adxThreshold, "0.0") : "ปิดตัวกรอง"
+    string htfText = not useHtf ? "ปิดตัวกรอง" : not entryChartOk ? "ชนิดกราฟไม่รองรับ" : not htfValid ? "ต้องเลือกสูงกว่ากราฟ" : not confirmedHtfReady ? "รอข้อมูล" : confirmedHtfSide == 1 ? "ขึ้น" : confirmedHtfSide == -1 ? "ลง" : "ยังไม่ชัด"
+    string newsText = newsBlocked ? "พักสัญญาณใหม่ตามเวลาที่กรอก" : not anyNewsConfigured ? "ยังไม่ได้ตั้งเวลา / ไม่ได้กรองข่าว" : not futureNewsConfigured ? "เวลาข่าวเดิมหมดอายุ ต้องอัปเดต" : "ตรวจเฉพาะเวลาที่กรอกเอง"
+    string quantityText = not sizingEnabled ? "ยังไม่ได้ตั้งงบเสี่ยงและมูลค่าต่อหน่วย" : na(planQty) ? "รอสัญญาณ" : str.tostring(planQty, "#.########") + " " + quantityUnit + " / " + riskCurrency
+    string planDetails = (activeSide != 0 ? "แผนปัจจุบัน: " : "แผนล่าสุด (ไม่ใช่จุดเข้าใหม่): ") + f_planText(planStatus)
+    if not na(planEntry)
+        planDetails += "\nEntry " + f_price(planEntry) + " | SL " + f_price(planStop) + " | TP " + f_price(planTarget)
+        planDetails += "\nผลตอบแทน/ความเสี่ยง " + str.tostring(planNetR, "0.00") + "R | ขนาด: " + quantityText
+    string details = syminfo.ticker + " | กรอบเวลา " + chartTimeframe + "\nอิงแท่งปิดล่าสุด; แท่งปัจจุบัน" + (barstate.isconfirmed ? "ปิดแล้ว" : "ยังไม่ปิด")
+    details += "\nADX กราฟเข้า " + adxText + " / " + filterText + "\nกรอบยืนยัน " + selectedHtf + ": " + htfText
+    details += "\nเทรนด์ใหญ่ " + selectedMainHtf + ": " + (not useHtf ? "ปิดตัวกรอง" : not mainHtfValid ? "ต้องสูงกว่ากรอบยืนยัน" : not confirmedMainHtfReady ? "รอข้อมูล" : f_directionText(confirmedMainHtfSide))
+    details += "\nอ่านหลายแท่ง: EMA " + str.tostring(fastLength) + "/" + str.tostring(slowLength) + " และความชันในแต่ละกรอบเวลา"
+    details += "\nHTF ใช้แท่งที่ปิดแล้ว อัปเดตสถานะเมื่อแท่งกราฟเข้าปิด\nกราฟเข้า: " + chartPhase
+    details += "\nจังหวะเข้า: " + f_entryText(entryStatus) + "\nข่าว: " + newsText
+    details += "\nต้นทุน: " + (costBuffer > 0 ? f_price(costBuffer) + " หน่วยราคา" : "ยังไม่ได้รวมต้นทุน") + "\n" + planDetails
+    details += "\nชี้แท่งย้อนหลังแล้วเปิด Data Window เพื่อดูตัวเลขของแท่งนั้น"
+    if showStatusLabel
+        statusLabel := f_updateLabel(statusLabel, labelX, labelTop + visualAtr * 1.5, stateText + "\n" + confirmationText + "\n" + chartTfText + " · " + chartPhase + "\n" + actionText, statusLabelColor, details, fontSize)
+    else if not na(statusLabel)
+        label.delete(statusLabel)
+        statusLabel := na
+
+    if activePlanVisible and showPriceLabels
+        string planTooltip = "ระดับอ้างอิงของแผนเดิม ไม่ใช่ราคาจับคู่คำสั่งจริง\nติดตามการแตะ SL/TP เมื่อแท่งปิด\n" + planDetails
+        entryPriceLabel := f_updateLabel(entryPriceLabel, labelX, planEntry, "เข้า (Entry)  " + f_price(planEntry), color.rgb(37, 99, 235), planTooltip, fontSize)
+        stopPriceLabel := f_updateLabel(stopPriceLabel, labelX, planStop, "ตัดขาดทุน (SL)  " + f_price(planStop), downLabelColor, planTooltip, fontSize)
+        targetPriceLabel := f_updateLabel(targetPriceLabel, labelX, planTarget, "เป้าหมาย (TP)  " + f_price(planTarget), upLabelColor, planTooltip, fontSize)
+    else
+        if not na(entryPriceLabel)
+            label.delete(entryPriceLabel)
+            entryPriceLabel := na
+        if not na(stopPriceLabel)
+            label.delete(stopPriceLabel)
+            stopPriceLabel := na
+        if not na(targetPriceLabel)
+            label.delete(targetPriceLabel)
+            targetPriceLabel := na
+
+alertcondition(entrySignal == 1, title="BUY entry confirmed", message='Trend Entry BUY {{ticker}} {{interval}} | Entry {{plot("Plan entry")}} | SL {{plot("Plan stop")}} | TP {{plot("Plan target")}} | Reference levels, not a broker fill.')
+alertcondition(entrySignal == -1, title="SELL entry confirmed", message='Trend Entry SELL {{ticker}} {{interval}} | Entry {{plot("Plan entry")}} | SL {{plot("Plan stop")}} | TP {{plot("Plan target")}} | Reference levels, not a broker fill.')
+alertcondition(entrySignal != 0, title="Any entry confirmed", message='Trend Entry {{ticker}} {{interval}} | Side {{plot("Entry signal")}} (1=BUY, -1=SELL) | Entry {{plot("Plan entry")}} | SL {{plot("Plan stop")}} | TP {{plot("Plan target")}}.')
+alertcondition(turnedUp, title="Trend turns UP", message="Trend Entry: selected main/displayed trend UP on {{ticker}} | Chart {{interval}}, closed price {{close}}. Check the label for the trend timeframe.")
+alertcondition(turnedDown, title="Trend turns DOWN", message="Trend Entry: selected main/displayed trend DOWN on {{ticker}} | Chart {{interval}}, closed price {{close}}. Check the label for the trend timeframe.")
+alertcondition(turnedNeutral, title="Trend becomes NEUTRAL", message="Trend Entry: selected main/displayed trend UNCLEAR on {{ticker}} | Chart {{interval}}, closed price {{close}}. Check the label for the trend timeframe.")
+alertcondition(trendChanged, title="Any trend change", message="Trend Entry: selected main/displayed trend changed on {{ticker}} | Chart {{interval}}, closed price {{close}}. Check the label for direction and trend timeframe.")
