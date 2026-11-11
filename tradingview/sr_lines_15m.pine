@@ -1,0 +1,189 @@
+//@version=6
+indicator("แนวรับแนวต้าน 15m", overlay = true, max_lines_count = 50, max_boxes_count = 50)
+
+tfIn      = input.timeframe("15", "TF ที่ใช้หาเส้น", tooltip = "เว้นว่าง = ใช้ TF ของกราฟ")
+nSide     = input.int(2, "จำนวนโซนต่อฝั่ง", minval = 1, maxval = 3)
+showLines = input.bool(true, "แสดงเส้น (ปลายไส้ = จุดตัดสิน BO)")
+showBoxes = input.bool(false, "แสดงกล่องโซน (ขอบเนื้อ → ปลายไส้)")
+resCol    = input.color(color.red, "สีแนวต้าน")
+supCol    = input.color(color.blue, "สีแนวรับ")
+lineW     = input.int(1, "ความหนาเส้น", minval = 1, maxval = 4)
+boxTransp = input.int(85, "ความใสของกล่อง (%)", minval = 0, maxval = 100)
+
+grpFind  = "หาเส้น (ครูยังไม่ได้ให้เกณฑ์ → ปรับเอง)"
+pivLen   = input.int(5, "Swing: จำนวนแท่งซ้าย/ขวา", minval = 2, group = grpFind)
+minTouch = input.int(2, "ไส้แตะขั้นต่ำถึงนับเป็นแนว", minval = 1, group = grpFind)
+maxCand  = input.int(60, "จำนวนโซนที่จำไว้สูงสุด", minval = 4, maxval = 200, group = grpFind)
+
+type Zone
+    bool  isSup
+    float edge
+    float body
+    int   t0
+    int   touches = 1
+    bool  hit = false
+
+zTop(Zone z) => z.isSup ? z.body : z.edge
+zBot(Zone z) => z.isSup ? z.edge : z.body
+
+method feed(Zone z, float o, float h, float l, float c) =>
+    bool broke = false
+    z.hit := false
+    if z.isSup
+        broke := c < z.edge
+        if not broke and l <= z.body
+            z.hit     := true
+            z.touches += 1
+            z.edge    := math.min(z.edge, l)
+            z.body    := math.min(z.body, math.min(o, c))
+    else
+        broke := c > z.edge
+        if not broke and h >= z.body
+            z.hit     := true
+            z.touches += 1
+            z.edge    := math.max(z.edge, h)
+            z.body    := math.max(z.body, math.max(o, c))
+    broke
+
+mergeOverlaps(array<Zone> zs) =>
+    bool again = true
+    while again
+        again := false
+        int n = zs.size()
+        if n > 1
+            for i = 0 to n - 1
+                Zone a = zs.get(i)
+                if a.hit
+                    for j = 0 to n - 1
+                        Zone b = zs.get(j)
+                        if j != i and b.isSup == a.isSup and zBot(a) <= zTop(b) and zTop(a) >= zBot(b)
+                            Zone keep = zs.get(math.min(i, j))
+                            Zone drop = zs.get(math.max(i, j))
+                            keep.edge    := keep.isSup ? math.min(keep.edge, drop.edge) : math.max(keep.edge, drop.edge)
+                            keep.body    := keep.isSup ? math.min(keep.body, drop.body) : math.max(keep.body, drop.body)
+                            keep.touches := math.max(keep.touches, drop.touches)
+                            keep.t0      := math.min(keep.t0, drop.t0)
+                            keep.hit     := true
+                            zs.remove(math.max(i, j))
+                            again := true
+                            break
+                if again
+                    break
+    zs.size()
+
+addZone(array<Zone> zs, bool isSup) =>
+    float wickEnd = isSup ? low[pivLen] : high[pivLen]
+    float bodyEnd = isSup ? math.min(open[pivLen], close[pivLen]) : math.max(open[pivLen], close[pivLen])
+    float lo      = isSup ? wickEnd : bodyEnd
+    float hi      = isSup ? bodyEnd : wickEnd
+    bool  clash   = false
+    for z in zs
+        if z.isSup == isSup and lo <= zTop(z) and hi >= zBot(z)
+            clash := true
+            break
+    if not clash
+        Zone nz = Zone.new(isSup, wickEnd, bodyEnd, time[pivLen])
+        for j = pivLen - 1 to 0
+            nz.feed(open[j], high[j], low[j], close[j])
+        nz.hit := true
+        zs.push(nz)
+        mergeOverlaps(zs)
+        if zs.size() > maxCand
+            int idx = 0
+            for i = 0 to zs.size() - 1
+                if zs.get(i).touches < minTouch
+                    idx := i
+                    break
+            zs.remove(idx)
+    zs.size()
+
+calcLevels() =>
+    var zs   = array.new<Zone>()
+    var outs = array.new<float>(18, na)
+    array<float> snap = outs.copy()
+
+    if zs.size() > 0
+        for i = zs.size() - 1 to 0
+            if zs.get(i).feed(open, high, low, close)
+                zs.remove(i)
+    mergeOverlaps(zs)
+
+    float pl = ta.pivotlow(low, pivLen, pivLen)
+    float ph = ta.pivothigh(high, pivLen, pivLen)
+    if not na(pl)
+        addZone(zs, true)
+    if not na(ph)
+        addZone(zs, false)
+
+    array<float> uE = array.new<float>()
+    array<float> uB = array.new<float>()
+    array<float> uT = array.new<float>()
+    array<float> dE = array.new<float>()
+    array<float> dB = array.new<float>()
+    array<float> dT = array.new<float>()
+    for z in zs
+        if z.touches >= minTouch
+            if z.edge > close
+                uE.push(z.edge)
+                uB.push(z.body)
+                uT.push(z.t0)
+            else if z.edge < close
+                dE.push(z.edge)
+                dB.push(z.body)
+                dT.push(z.t0)
+    array<int> ui = uE.sort_indices(order.ascending)
+    array<int> di = dE.sort_indices(order.descending)
+    for k = 0 to 2
+        if k < ui.size()
+            int q = ui.get(k)
+            outs.set(k * 3,     uE.get(q))
+            outs.set(k * 3 + 1, uB.get(q))
+            outs.set(k * 3 + 2, uT.get(q))
+        else
+            outs.set(k * 3,     na)
+            outs.set(k * 3 + 1, na)
+            outs.set(k * 3 + 2, na)
+        if k < di.size()
+            int q = di.get(k)
+            outs.set(9 + k * 3,     dE.get(q))
+            outs.set(9 + k * 3 + 1, dB.get(q))
+            outs.set(9 + k * 3 + 2, dT.get(q))
+        else
+            outs.set(9 + k * 3,     na)
+            outs.set(9 + k * 3 + 1, na)
+            outs.set(9 + k * 3 + 2, na)
+    [snap.get(0),  snap.get(1),  snap.get(2),  snap.get(3),  snap.get(4),  snap.get(5),
+     snap.get(6),  snap.get(7),  snap.get(8),  snap.get(9),  snap.get(10), snap.get(11),
+     snap.get(12), snap.get(13), snap.get(14), snap.get(15), snap.get(16), snap.get(17)]
+
+[r1, rb1, rt1, r2, rb2, rt2, r3, rb3, rt3, s1, sb1, st1, s2, sb2, st2, s3, sb3, st3] = request.security(syminfo.tickerid, tfIn, calcLevels(), lookahead = barmerge.lookahead_on)
+
+var array<line> drawnL = array.new<line>()
+var array<box>  drawnB = array.new<box>()
+if barstate.islast
+    for ln in drawnL
+        ln.delete()
+    for bx in drawnB
+        bx.delete()
+    drawnL.clear()
+    drawnB.clear()
+    array<float> lvE = array.from(r1, r2, r3, s1, s2, s3)
+    array<float> lvB = array.from(rb1, rb2, rb3, sb1, sb2, sb3)
+    array<float> lvT = array.from(rt1, rt2, rt3, st1, st2, st3)
+    for k = 0 to 5
+        float p = lvE.get(k)
+        if not na(p) and k % 3 < nSide
+            color c = k < 3 ? resCol : supCol
+            if showBoxes
+                float b = lvB.get(k)
+                drawnB.push(box.new(int(lvT.get(k)), math.max(p, b), time, math.min(p, b), xloc = xloc.bar_time,
+                     extend = extend.right, bgcolor = color.new(c, boxTransp), border_color = color.new(c, 50)))
+            if showLines
+                drawnL.push(line.new(bar_index - 1, p, bar_index, p, extend = extend.both, color = c, width = lineW))
+
+plot(showLines and nSide >= 1 ? r1 : na, "แนวต้าน 1", resCol, display = display.price_scale)
+plot(showLines and nSide >= 2 ? r2 : na, "แนวต้าน 2", resCol, display = display.price_scale)
+plot(showLines and nSide >= 3 ? r3 : na, "แนวต้าน 3", resCol, display = display.price_scale)
+plot(showLines and nSide >= 1 ? s1 : na, "แนวรับ 1", supCol, display = display.price_scale)
+plot(showLines and nSide >= 2 ? s2 : na, "แนวรับ 2", supCol, display = display.price_scale)
+plot(showLines and nSide >= 3 ? s3 : na, "แนวรับ 3", supCol, display = display.price_scale)
