@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "skills": {
+    "watch-video": {
+      "source": "coreyhaines31/makerskills",
+      "sourceType": "github",
+      "skillPath": "skills/watch-video/SKILL.md",
+      "computedHash": "74f312bbefcadd9b8c2808282a1423307cef83833d396ec84d8fac04c2546973"
+    }
+  }
+}

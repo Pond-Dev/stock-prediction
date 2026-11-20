@@ -1,0 +1,1640 @@
+//@version=6
+indicator("แนวรับแนวต้าน หลาย TF + เทรนด์ 4H + จุดเข้า", shorttitle = "แนว MTF", overlay = true, max_boxes_count = 30, max_labels_count = 500, max_lines_count = 200)
+
+string G0 = "TF ที่ใช้หาโซน"
+string GM = "หาทิศ · หาจุดเข้า (MTF)"
+string GX = "ตลาดอื่นประกอบ · Silver / DXY"
+string OM_TEST = "🤖 ทดสอบทองคำ 4H 2 ปี (3,600 แท่ง): ช่วงที่สอดคล้อง 2/2 (44% ของเวลา) อีก 2 แท่งราคาไปตามเทรนด์เฉลี่ย +0.02 ATR ถูกทาง 49%\nช่วงที่มีตัวขัด (52% ของเวลา) +0.08 ATR ถูกทาง 52% = ไม่เห็นว่าสอดคล้องแล้วดีกว่า"
+string G1 = "แสดงผล"
+string G2 = "🤖 ค่าที่ AI ตั้ง (คลาสไม่ได้ให้ตัวเลข)"
+bool on1 = input.bool(true, "", inline = "t1", group = G0)
+string tf1 = input.timeframe("30", "TF 1", inline = "t1", group = G0, tooltip = "ชุด TF พื้นฐานที่ครูให้จด: Daily · 4H · 1H · 30 นาที (คลิปวันที่ 10 นาที 30)\nยิ่งเป็นโซนของ TF ใหญ่ ยิ่งสำคัญ · MTF §1")
+bool on2 = input.bool(true, "", inline = "t2", group = G0)
+string tf2 = input.timeframe("60", "TF 2", inline = "t2", group = G0)
+bool on3 = input.bool(true, "", inline = "t3", group = G0)
+string tf3 = input.timeframe("240", "TF 3", inline = "t3", group = G0)
+bool on4 = input.bool(true, "", inline = "t4", group = G0)
+string tf4 = input.timeframe("D", "TF 4", inline = "t4", group = G0, tooltip = "TF ยิ่งใหญ่ เส้นขอบยิ่งหนา")
+string tfT = input.timeframe("240", "TF หาเทรนด์", group = GM, tooltip = "TF ใหญ่ใช้หาทิศ · MTF §3\nขาขึ้น = ทะลุยอดเดิม และจังหวะย่อไม่ปิดหลุดแนวรับล่าสุด · Trend §16–18\nแนวรับล่าสุด = ก้นของการย่อครั้งล่าสุด · Trend §18–19\nทะลุดูที่เนื้อเทียน ไส้หลุดไม่นับ · Trend §18\nปิดหลุดแนวรับล่าสุด = เปลี่ยนเป็นขาลงทันที · Trend §19\nขาลง = ขาขึ้นกลับด้าน · Trend §21\nชนยอดเดิมหลายรอบไม่ผ่าน = Sideway · Trend §6\nSideway หลุดขึ้น = ขาขึ้น · หลุดลง = ขาลง · Trend §14")
+bool onE1 = input.bool(true, "", inline = "e1", group = GM)
+string tfE1 = input.timeframe("60", "TF หาจุดเข้า 1", inline = "e1", group = GM, tooltip = "1 ชั่วโมงกับ 30 นาที ไม่ได้ดูเพื่อหา bias · ดูเพื่อหาจุดเข้าและโซนการเล่น · MTF §5")
+bool onE2 = input.bool(true, "", inline = "e2", group = GM)
+string tfE2 = input.timeframe("30", "TF หาจุดเข้า 2", inline = "e2", group = GM, tooltip = "จุดเข้า = แท่งของ TF นี้ปิดทะลุโซนของตัวเอง ไปทางเดียวกับเทรนด์ 4H\nป้ายขึ้นหลังแท่งของ TF นี้ปิดแล้ว · ดูบนกราฟ TF นี้หรือเล็กกว่า\nเทรนด์ 4H เป็น Sideway = ไม่หาจุดเข้า รอหลุดกรอบก่อน · Trend §14\nตารางอ่าน \"ตอนนี้\" จาก TF หาจุดเข้าตัวเล็กสุดที่ไม่เล็กกว่ากราฟ")
+bool useBig = input.bool(true, "แท่งที่ทะลุยาวเกิน = ไม่เข้า", group = GM, tooltip = "แท่ง confirm ต้องพอดี ไม่ใหญ่ไม่เล็กเกิน · ใหญ่ไป = ใช้ระยะหมด · confirm §1, §4\nยิ่งทะลุไปไกลจากโซน ยิ่งมีโอกาสกลับตัว · แท่งทะลุที่ดีปิดห่างโซนนิดเดียว · confirm §7\nข้อนี้บังคับ: ไม่ผ่านแล้วไม่ขึ้นป้าย ต่อให้ข้ออื่นผ่านครบ\nข้อยกเว้นในคลาส (Sideway นาน 6–7 ชม. แท่งใหญ่เล่นได้ · confirm §6) ยังไม่ได้ใส่\nวันที่ 11 ครูพูดซ้ำเป็นเรื่อง Breakout: ยิ่งเบรกไกล ยิ่งมีโอกาสกลับไป retest โซนเดิม · ท่าเทรด §2")
+bool useNear = input.bool(true, "แท่งที่ทะลุปิดปริ่มแนว = ไม่เข้า", group = GM, tooltip = "Breakout ที่ครูให้ดาว: ปิดเลยแนวพอดี ★★★ · เริ่มไกล ★★ · ไกล ★ · ท่าเทรด §2\n\"ใกล้ไป\" มีแบบเดียว คือปิดปริ่มโซน · ท่าเทรด §2 · ตัวอย่างกราฟจริงที่ครูบอกว่ายังไม่ได้เพราะปิดปริ่มโซน · ท่าเทรด §15\nข้อนี้บังคับ: ปิดปริ่มแนวแล้วไม่ขึ้นป้าย ต่อให้ข้ออื่นผ่านครบ\n🤖 คลาสไม่ได้ให้ตัวเลข · ระยะที่นับว่าปริ่มตั้งได้ในกลุ่ม 🤖\nทดสอบทองคำ 1H 2.4 ปี (ป้ายแบบทะลุ 271 ป้าย): ป้ายที่ปิดเลยแนวไม่ถึง 0.1 ATR (62 ป้าย) 4 แท่งถัดไปเฉลี่ย +0.02 ATR · ป้ายที่เหลือ +0.22 ATR\nแต่ดูไกล 8 แท่งกลับกัน (+0.40 เทียบ +0.13 ATR) = ผลปนกัน ยังไม่ชัดว่าตัดออกแล้วดีกว่า")
+bool useRej =input.bool(true, "จุดเข้าแบบ Rejection", group = GM, tooltip = "ราคาวิ่งไปชนแนวแล้วโดนตบกลับ ทิ้งไส้ · confirm §8\nปิดเป็นแท่งฝั่งเดียวกับเทรนด์ 4H = มีโอกาสไปทางเทรนด์ เล่นได้ · รอแท่งปิดก่อน\nปิดเป็นแท่งสวนเทรนด์ = ยังไม่ควรเข้า\nโน้ตเตือนว่า Rejection อย่างเดียวไม่ค่อยชัวร์ · confirm §9\nไม่ขึ้นป้ายถ้าแท่งไม่มีไส้ฝั่งปิด (50/50 · แท่งเทียน §3) หรือติดโซนถัดไป (MTF §9)\n🤖 รูปทรงที่ AI ใส่เอง: ไส้ฝั่งที่โดนตบยาวกว่าเนื้อและยาวกว่าไส้อีกฝั่ง (คลิปวันที่ 9 นาที 29 · ยังไม่ได้ป้อน)\nทดสอบทองคำ 1H 2 ปี (119 ป้าย · ราว 1 ป้าย/สัปดาห์): 4 แท่งถัดไปเฉลี่ย -0.05 ATR · 8 แท่ง -0.13 ATR · ไปถูกทาง 55% = ยังไม่เห็นความได้เปรียบ\nรอ Impulse Entry ก่อนค่อยเข้าก็ไม่ดีกว่า (+0.04 / -0.23 ATR)\nเข้าที่เส้นทันทีที่ราคาแตะ ไม่รอแท่งปิด (1,704 ครั้ง): 4 แท่งถัดไปเฉลี่ย -0.01 ATR · ตั้ง SL กับ TP ห่าง 1 ATR เท่ากัน ชนะ 46% = ไม่ดีกว่ารอแท่งปิด\nฝั่งสวนเทรนด์ 4H (ชนแล้วปิดกลับ 1,490 ครั้ง): 4 แท่งถัดไปเฉลี่ย -0.18 ATR ไปถูกทาง 45% · ยิ่งเป็นแนวของ TF ใหญ่ยิ่งแย่ = สคริปต์จึงไม่ขึ้นป้ายฝั่งสวนเทรนด์")
+bool useRet = input.bool(true, "จุดเข้าแบบ Break & Retest ด้วยไส้", group = GM, tooltip = "Breakout มี 2 แบบ: เบรกแล้วไปเลย กับเบรกแล้วกลับมา retest โซนเดิม · ท่าเทรด §1\nRetest ด้วยไส้: แท่งหลังเบรกลงมาแตะแนวเดิม ทิ้งไส้ แล้วปิดกลับเป็นแท่งตามเทรนด์ · ครูชอบแบบนี้เพราะเบรกแล้วอยากให้ไปเลย · ท่าเทรด §5–§6\nครูเข้าแบบ Impulse Entry ตอนทะลุ high แท่งก่อนหน้า · ป้ายนี้ขึ้นหลังแท่งปิด จึงช้ากว่าที่ครูเข้า\nไม่ขึ้นป้ายถ้าแท่งเบรกปิดไกล (★★ ขึ้นไป): ครูไม่ชอบให้แท่งเบรกไกล เพราะแรงอาจหมด · ท่าเทรด §5\nทดสอบทองคำ 1H 2.4 ปี ตามเทรนด์ 4H: แท่งเบรกไม่ไกล (146 ครั้ง · ราว 1.2 ครั้ง/สัปดาห์) 4 แท่งถัดไปเฉลี่ย +0.06 ATR · 8 แท่ง +0.29 ATR · ไปถูกทาง 53% = ได้เปรียบน้อย\nแท่งเบรกไกล (19 ครั้ง) 4 แท่ง -0.63 ATR = ตรงกับที่ครูเตือน แต่ตัวอย่างน้อย")
+bool showRetB = input.bool(false, "แสดง Retest ด้วยเนื้อเทียน (ยังไม่ใช่จุดเข้า)", group = GM, tooltip = "ปิดไว้เป็นค่าเริ่มต้นเพื่อไม่ให้กราฟรก · ตารางยังบอกเมื่อเกิดขึ้น\nRetest ด้วยเนื้อ: เบรกไปก่อน แล้วแท่งสวนทางย่อกลับมาที่แนวเดิม แล้วเกิดแท่งตามเทรนด์ = ต้านเปลี่ยนเป็นรับ (หรือรับเปลี่ยนเป็นต้าน) แปลว่าโซนนี้มีนัยยะสำคัญสูงมาก · ท่าเทรด §4\nครูยังไม่เข้าตรงนี้เพราะมักติดแนวของยอดแท่งเบรก · ครูรอเบรกแนวนั้นอีกทีค่อยเข้า · ป้ายจึงเป็นสีเทา ไม่นับเป็นจุดเข้า\nทดสอบทองคำ 1H 2.4 ปี ตามเทรนด์ 4H (151 ครั้ง): 4 แท่งถัดไปเฉลี่ย +0.09 ATR · 8 แท่ง +0.24 ATR · ไปถูกทาง 57% · ฝั่งสวนเทรนด์ -0.18 ATR")
+bool useC3 = input.bool(true, "จุดเข้าแบบ 3 แท่งมหาประลัย", group = GM, tooltip = "ต้องเกิดตอนราคาวิ่งเป็นเทรนด์เท่านั้น · เกิดใน Sideway ไม่นับ · เกิดตรงขอบกรอบหลังเบรก = Break & Retest ไม่ใช่ 3 แท่ง · ท่าเทรด §16\n3 ข้อ: แท่งแรกใหญ่ · แท่งสองเล็ก (ยิ่งเล็กยิ่งดี) · แท่งสามปิดเลยไส้ของแท่งแรกและแท่งสอง · ท่าเทรด §17\nไม่ดี: แท่งสามปิดยาวเกิน = ขึ้นมาเยอะอีกแล้ว · ท่าเทรด §19\nป้ายขึ้นหลังแท่งสามปิด (แบบรอปิดแท่ง) · ครูเข้าแบบ Impulse Entry ได้ด้วย · ท่าเทรด §18\n🤖 \"วิ่งเป็นเทรนด์\" ในสคริปต์ = ทิศเดียวกับเทรนด์ 4H + แท่งของ TF นี้เบรกแนวของตัวเองไปแล้ว 3 แท่งขึ้นไป + ทั้ง 3 แท่งอยู่ห่างจากแนวที่เบรก · ตัวเลขอยู่ในกลุ่ม 🤖\nทดสอบทองคำ 1H 2.4 ปี: ครบ 3 ข้อและวิ่งเป็นเทรนด์ (27 ครั้ง · ราวเดือนละครั้ง) 4 แท่งถัดไปเฉลี่ย +0.71 ATR · 8 แท่ง +0.81 ATR · ไปถูกทาง 67%\nครบ 3 ข้อแต่อยู่ขอบกรอบ (170 ครั้ง) -0.09 ATR · ไม่มีการเบรกมาก่อน (118 ครั้ง) +0.01 ATR = ตรงกับที่ครูบอกว่าต้องเกิดตอนวิ่งเป็นเทรนด์ · แต่ 27 ครั้งยังน้อย")
+bool useTc = input.bool(true, "จุดเข้าแบบ Trend Change และท่าที่ 6", group = GM, tooltip = "Trend Change (TC): ขาขึ้นปิดต่ำกว่าแนวรับล่าสุด = ขาลง · ไม่ต้องรอแนวรับตัวล่าง · ท่าเทรด §14 · Trend §19\nป้ายขึ้นเมื่อโครงสร้างของ TF หาจุดเข้าพลิกกลับมาทางเดียวกับเทรนด์ 4H (จบจังหวะย่อสวนเทรนด์)\nโครงสร้างของ TF หาจุดเข้าอ่านด้วยวิธีเดียวกับเทรนด์ 4H · Trend §16–21\nไม่ขึ้นป้ายถ้าปิดปริ่มแนว หรือไส้ฝั่งที่ทะลุยาวกว่าเนื้อ (volume ไม่ได้เยอะขนาดนั้น) · ท่าเทรด §15\nท่าที่ 6 = Trend Change ที่แท่งเปลี่ยนเทรนด์ใหญ่มาก กลืนไปหมด · ครูรอแท่งถัดไปทำไส้อีกฝั่งแล้วเข้า Impulse Entry · ท่าเทรด §20\n🤖 สคริปต์นับเป็นท่าที่ 6 เมื่อแท่งนั้นปิดเลยแนวเกินค่า \"แท่งยาวเกิน: ปิดเลยแนว\" ในกลุ่ม 🤖 · ป้ายขึ้นที่แท่งเปลี่ยนเทรนด์ ก่อนจังหวะที่ครูเข้า\nทดสอบทองคำ 1H 2.4 ปี: ป้าย TC ที่ผ่านเงื่อนไข (148 ครั้ง · ราว 1.2 ครั้ง/สัปดาห์) 4 แท่งถัดไปเฉลี่ย +0.06 ATR · 8 แท่ง +0.14 ATR · ไปถูกทาง 50% = ยังไม่เห็นความได้เปรียบ\nไส้ยาวกว่าเนื้อ (27 ครั้ง) -0.20 ATR ไปถูกทาง 37% = ตรงกับที่ครูบอกว่ายังไม่ได้\nท่าที่ 6 (22 ครั้ง) 4 แท่ง +0.50 ATR · 8 แท่ง +0.77 ATR · ไปถูกทาง 64% · ตัวอย่างยังน้อย")
+bool useFt = input.bool(false, "จุดเข้าแบบ Follow Trend (ป้ายบนกราฟ)", group = GM, tooltip = "Follow Trend: ขาขึ้น ทำแนวต้าน ย่อ แล้วทำแนวรับ มีโอกาส 80% กลับไป retest high เดิม · ขาลงกลับกัน · ท่าเทรด §10 · Trend §5\nดู volume ต้องเทียบกับแท่งก่อนหน้า: แท่งที่กลับตัวควรใหญ่กว่าแท่งก่อนหน้า · ท่าเทรด §11\nสคริปต์จับ: โครงสร้างของ TF หาจุดเข้าไปทางเดียวกับเทรนด์ 4H + ย่อสวนเทรนด์อย่างน้อย 2 แท่ง + เกิดแท่งตามเทรนด์ที่เนื้อใหญ่กว่าแท่งก่อนหน้า\nปิดป้ายไว้เพราะเกิดบ่อยมาก (ราว 3.8 ครั้ง/สัปดาห์ต่อ TF) · ตารางยังบอกเมื่อเกิดขึ้น\nทดสอบทองคำ 1H 2.4 ปี (469 ครั้ง): 4 แท่งถัดไปเฉลี่ย +0.06 ATR · 8 แท่ง +0.22 ATR · ไปถูกทาง 50% = ได้เปรียบน้อย\nแท่งกลับตัวเล็กกว่าแท่งก่อนหน้า (387 ครั้ง): +0.01 / +0.07 ATR = ใหญ่กว่าแท่งก่อนหน้าดีกว่าเล็กน้อย ตรงกับที่ครูสอน")
+bool showFo = input.bool(false, "แสดงป้าย Fakeout ของป้าย Breakout", group = GM, tooltip = "Fakeout = เบรกออกไปแล้วกลับเข้ามาปิดในโซนเดิม · ท่าเทรด §7\nครูไม่ค่อยเล่น Fakeout และบอกว่าอย่าเล่นตอนราคาวิ่งเป็นเทรนด์ ให้เล่นเฉพาะ Sideway จริง ๆ · ท่าเทรด §8–§9\nสคริปต์หาจุดเข้าตามเทรนด์ 4H จึงไม่ทำป้ายจุดเข้าแบบ Fakeout · ตารางจะบอกเมื่อป้าย Breakout ล่าสุดโดนปิดกลับเข้าแนว\nเปิดข้อนี้ = ขึ้นป้ายเทาบนกราฟด้วย (ปิดไว้เพราะเกิดบ่อย)\nทดสอบทองคำ 1H 2.4 ปี: ป้าย Breakout 166 จาก 271 ป้าย (61%) โดนปิดกลับเข้าแนวภายใน 6 แท่ง แต่หลังจากนั้น 4 แท่งราคายังไปตามเทรนด์เฉลี่ย +0.14 ATR (8 แท่ง +0.29) = โดนปิดกลับแล้วไม่ได้แปลว่าต้องสวน\nเล่น Fakeout กลับเข้ากรอบทางเดียวกับเทรนด์ 4H (345 ครั้ง): 4 แท่ง +0.04 ATR · 8 แท่ง -0.07 ATR = ไม่เห็นความได้เปรียบ")
+bool showPanel = input.bool(true, "ตาราง: ตอนนี้ · กำลังรอ", group = GM)
+bool showFail = input.bool(false, "แสดงจุดที่ทะลุแนว แต่ยังไม่เข้า", group = GM, tooltip = "ป้ายสีเทา · ชี้เมาส์ดูว่าข้อไหนไม่ผ่าน")
+bool useOm = input.bool(true, "อ่าน Silver และ DXY ประกอบ", group = GX, tooltip = "สคริปต์ดึง Silver และ DXY มาอ่านเอง · เปิดแค่กราฟทองก็พอ\nอ่านเทรนด์บน TF หาเทรนด์ ด้วยวิธีเดียวกับทอง · Trend §16–21\nSilver ปกติไปทางเดียวกับทอง · DXY ปกติสวนกับทอง\nที่มา: คลิป Bills (นอกคลาส) ใช้ silver กับ DXY เป็น confluence ฝั่ง fundamental · Bills §13\nคลาสยังไม่ได้สอนเรื่องนี้\n🤖 ความสัมพันธ์ไม่คงที่ บางช่วงทองกับ DXY ขึ้นพร้อมกันได้\n" + OM_TEST)
+bool omCount = input.bool(true, "นับเป็นเช็กข้อที่ 5 ของจุดเข้า", group = GX, tooltip = "Silver และ DXY สอดคล้องกับเทรนด์ทองทั้งคู่ (2/2) = ได้ 1 ข้อ · นับรวมกับ 4 ข้อเดิมเป็น 5 ข้อ\nconfirm ใช้แทนกันได้ · confirm §13\nSilver กับ DXY เป็น confluence ฝั่ง fundamental · Bills §13\nเปิดแล้วป้ายจุดเข้าแบบทะลุจะขึ้นมากกว่าเดิม: จุดที่ผ่าน 2 จาก 4 ข้อเดิม จะผ่านได้ถ้าตลาดอื่นสอดคล้อง\nไม่มีผลกับป้าย Rejection และกฎแท่งยาวเกิน\nปิดข้อนี้ = นับ 4 ข้อเหมือนเดิม\n" + OM_TEST)
+string symS = input.symbol("TVC:SILVER", "Silver", group = GX, tooltip = "ปกติไปทางเดียวกับทอง\nถ้าในตารางขึ้น – ตลอด ลองเปลี่ยนเป็น OANDA:XAGUSD")
+string symD = input.symbol("TVC:DXY", "DXY", group = GX, tooltip = "ดัชนีดอลลาร์ · ปกติสวนกับทอง")
+string drawAt = input.string("เนื้อเทียน", "ตีแนวที่", options = ["เนื้อเทียน", "ไส้"], group = G1, tooltip = "เนื้อเทียน = เส้นอยู่ที่ราคาเปิด/ปิดสุดของจุดกลับตัว ไส้ไม่นับ · ทะลุเมื่อแท่งปิดเลยเส้น\nใกล้กับที่ครูตีเอง: แถบบางชิดเนื้อ ให้ไส้ทิ่มผ่าน (ภาพในคลิปวันที่ 7 และ 8 · S/R §5 · Trend §19)\nครูรอเนื้อปิดเลยปลายไส้ทั้งหมด (S/R §8) = เช็กข้อ \"ปิดเลยไส้ซ้ายมือ\" ของป้ายจุดเข้า\nไส้ = โซนหนาจากเนื้อถึงปลายไส้ · ในคลิปครูวาดแบบนี้ให้ดูว่าเป็นแบบที่โค้ชคนอื่นสอน (S/R §5) · ทะลุเมื่อแท่งปิดเลยปลายไส้ทั้งหมด")
+bool showPx = input.bool(true, "แสดงราคาขอบโซน", group = G1)
+bool showTag = input.bool(true, "ป้ายสั้นที่เส้นแนวใกล้ราคา", group = G1, tooltip = "บรรทัดสั้นใต้ป้ายของแนวที่ใกล้ราคาที่สุดฝั่งละแนว บอกว่าถ้าเนื้อปิดเลยแล้วแปลว่าอะไร · S/R §3")
+bool showClock = input.bool(true, "ตาราง: ช่วงตลาดและนาทีของแท่ง", group = G1, tooltip = "ต่อท้ายบรรทัด \"ตอนนี้\" ว่าอยู่ช่วงตลาดไหน และแท่งของ TF หาจุดเข้าเปิดมาแล้วกี่นาที (ต้น · กลาง · ปลายแท่ง)\nเวลาเข้า Impulse Entry: แบ่งแท่งเป็น 3 ส่วน เข้าช่วงกลาง · 1 ชั่วโมง = นาทีที่ 20–40 · 30 นาที = นาทีที่ 10–20 · ท่าเทรด §21\nนาทีของแท่งอ่านได้เฉพาะตอนตลาดเปิดและกราฟวิ่งอยู่")
+bool showLv = input.bool(true, "ขีดเส้นระดับของแนวที่ป้ายจุดเข้า", group = G1, tooltip = "เส้นจุดสั้น ๆ ตรงระดับของแนวที่เป็นที่มาของป้ายจุดเข้า\nแนวที่โดนทะลุจะถูกลบจากกราฟ เส้นนี้ช่วยให้เห็นว่าป้ายเกิดที่แนวไหน")
+string uiSize = input.string("กลาง", "ขนาดตัวอักษร", options = ["เล็ก", "กลาง", "ใหญ่"], group = G1)
+string panelPos = input.string("ขวาบน", "ตำแหน่งตาราง", options = ["ขวาบน", "ขวากลาง", "ขวาล่าง", "ซ้ายบน", "ซ้ายล่าง"], group = G1)
+string tzShow = input.string("Asia/Bangkok", "เขตเวลาที่แสดงในตาราง", options = ["Asia/Bangkok", "UTC", "Europe/London", "America/New_York", "ตามตลาด"], group = G1, tooltip = "สคริปต์อ่านเขตเวลาของกราฟไม่ได้ จึงต้องเลือกเอง")
+int swingLen = input.int(3, "ความยาว swing (แท่งต่อข้าง)", minval = 1, maxval = 10, group = G2, tooltip = "จุดกลับตัว = แท่งที่สูงสุด (หรือต่ำสุด) เทียบกับแท่งซ้ายและขวาข้างละเท่านี้ · S/R §0\n1 = ย่อแท่งเดียวก็นับ ตามตัวอย่างในคลาส (โซนเปลี่ยนบ่อย)\n3 = ค่าเริ่มต้น จากผลทดสอบเก่าของเรา\nโซนจะขึ้นหลังจุดกลับตัวเท่าจำนวนแท่งนี้ของ TF นั้น")
+float mergeAtr = input.float(0.25, "แบบเนื้อเทียน: รวมเส้นที่ห่างกันไม่เกิน (ATR)", minval = 0, step = 0.05, group = G2, tooltip = "เส้นเนื้อเทียนที่อยู่ชิดกันให้มองเป็นก้อนเดียว · S/R §9\n0 = ไม่รวม")
+float groupAtr = input.float(0.5, "รวมป้ายของ TF ที่โซนอยู่ใกล้กัน (ATR ของกราฟ)", minval = 0, step = 0.1, group = G2, tooltip = "โซนหลาย TF ที่ทับหรือชิดกัน ใช้ป้ายเดียว เช่น \"แนวต้าน 1H + 4H\"")
+int trendLen = input.int(3, "เทรนด์: ความยาว swing (แท่งต่อข้าง)", minval = 1, maxval = 10, group = G2, tooltip = "ยอด / ก้นของการย่อ = จุดกลับตัวของเนื้อเทียน เทียบแท่งซ้ายขวาข้างละเท่านี้ ของ TF หาเทรนด์\n1 = ย่อแท่งเดียวก็นับ ตามรูปในคลาส (Trend §18) แต่บน 4H เทรนด์เปลี่ยนบ่อย ~2.7 ครั้ง/สัปดาห์\n3 = ~1.4 ครั้ง/สัปดาห์\n(ทดสอบทองคำ 4H ย้อนหลัง 2 ปี)")
+int sideN = input.int(2, "ชนยอดเดิมไม่ผ่านกี่รอบ = Sideway", minval = 1, maxval = 5, group = G2, tooltip = "Trend §6: ถ้าชนแนวต้านหลายรอบกว่าจะทะลุ ส่วนใหญ่กราฟจะเริ่ม Sideway\nนับรอบที่ไส้ขึ้นไปแตะยอดเดิมแต่เนื้อปิดไม่เลย หลังจากย่อลงมาแล้ว\nขาลงนับแบบกลับด้าน")
+int upBars = input.int(4, "ขึ้นติดกันกี่แท่ง = ยังไม่พักตัว", minval = 2, maxval = 10, group = G2, tooltip = "MTF §5: 1H ขึ้นมา 4 แท่ง ยังเข้าไม่ได้ ต้องรอพักตัวก่อน\n4 = ตามตัวอย่างในคลาส · นับแท่งที่ทะลุด้วย · ฝั่งลงนับแท่งลง")
+float tailPct = input.float(10, "ไส้สั้นกว่ากี่ % ของแท่ง = ไม่มีไส้", minval = 0, maxval = 50, step = 5, group = G2, tooltip = "MTF §9, §11: ปิดไม่มีไส้บน = แท่งต่อไป 50/50 · แท่งเทียน §3\nฝั่งลงดูไส้ล่าง")
+float roomAtr = input.float(1.0, "แนวถัดไปใกล้กว่ากี่ ATR = ติดโซน", minval = 0, step = 0.25, group = G2, tooltip = "MTF §9: ติดโซน = ยังเข้าไม่ได้\nATR ของ TF หาจุดเข้า · นับแนวของทุก TF ในสคริปต์นี้")
+float bigX = input.float(3.0, "แท่งยาวเกิน: เนื้อยาวกว่าค่าเฉลี่ย 20 แท่งกี่เท่า", minval = 1, step = 0.5, group = G2, tooltip = "แท่งที่ยาวกว่าแท่งอื่นมาก = ยาวเกิน · confirm §4\nทองคำ 30 นาที 60 วัน: แท่งทะลุที่ยาวกว่า 3 เท่า 4 แท่งต่อมาวิ่งสวนเฉลี่ย -0.6 ATR (แท่งปกติ +0.2) แต่ตัวอย่างยังน้อย (15 ครั้ง)\nทองคำ 1H 2 ปี: ไม่ต่างกันชัด")
+float farAtr = input.float(1.0, "แท่งยาวเกิน: ปิดเลยแนวที่ทะลุเกินกี่ ATR", minval = 0, step = 0.25, group = G2, tooltip = "ยิ่งทะลุไปไกลจากโซน ยิ่งมีโอกาสกลับตัว · confirm §7\nทองคำ 1H 2 ปี: ปิดเลยแนวไม่ถึง 0.5 ATR 4 แท่งต่อมาไปต่อเฉลี่ย +0.18 ATR · เกิน 0.5 ATR ติดลบ (-0.05 ถึง -0.24)\nแต่ดูไกล 8 แท่งผลปนกัน\nเกินค่านี้ = ★ ไกล · ท่าเทรด §2")
+float nearAtr = input.float(0.1, "ปิดปริ่มแนว: ปิดเลยแนวไม่ถึงกี่ ATR", minval = 0, step = 0.05, group = G2, tooltip = "ครูบอกแค่ว่า \"ปิดปริ่มโซน\" = ใกล้ไป ไม่ได้ให้ตัวเลข · ท่าเทรด §2\nครูไม่บอกจำนวนจุดเพราะแต่ละสินทรัพย์ไม่เหมือนกัน · สคริปต์จึงวัดเป็น ATR ของ TF หาจุดเข้า\n0 = ไม่มีแท่งไหนนับว่าปริ่ม")
+float midAtr = input.float(0.5, "ดาวระยะเบรก: ปิดเลยแนวเกินกี่ ATR = เริ่มไกล", minval = 0, step = 0.1, group = G2, tooltip = "ต่ำกว่าค่านี้ = ★★★ พอดี · ตั้งแต่ค่านี้ถึงค่า \"แท่งยาวเกิน: ปิดเลยแนว\" = ★★ เริ่มไกล · เกินกว่านั้น = ★ ไกล · ท่าเทรด §2\nดาวใช้บอกระดับความน่าเข้าตามที่ครูวาด ไม่มีผลกับการขึ้นป้าย\nทดสอบทองคำ 1H 2.4 ปี: ป้าย ★★★ (146 ป้าย) 4 แท่งถัดไปเฉลี่ย +0.20 ATR · ป้าย ★★ (63 ป้าย) +0.25 ATR = ไม่เห็นว่าดาวมากกว่าแล้วดีกว่า")
+int retW = input.int(3, "Retest ด้วยไส้: ภายในกี่แท่งหลังเบรก", minval = 1, maxval = 10, group = G2, tooltip = "ในภาพของครูคือแท่งถัดจากแท่งเบรกเลย · ท่าเทรด §5\n🤖 เผื่อไว้ 3 แท่ง โดยระหว่างนั้นต้องยังไม่มีแท่งสวนทาง")
+int retB = input.int(8, "Retest ด้วยเนื้อ: ภายในกี่แท่งหลังเบรก", minval = 2, maxval = 30, group = G2, tooltip = "ในภาพของครู แท่งสวนทางย่อลงมา 2–3 แท่งแล้วเกิดแท่งตามเทรนด์ที่แนวเดิม · ท่าเทรด §4\n🤖 คลาสไม่ได้กำหนดจำนวนแท่ง")
+float nearK = input.float(0.25, "Retest ด้วยเนื้อ: ย่อกลับมาใกล้แนวไม่เกินกี่ ATR", minval = 0, step = 0.05, group = G2, tooltip = "นับว่ากลับมา retest เมื่อราคาย่อกลับมาห่างแนวเดิมไม่เกินค่านี้\n🤖 คลาสไม่ได้ให้ตัวเลข")
+int foN = input.int(6, "Fakeout: ปิดกลับเข้าแนวภายในกี่แท่งหลังเบรก", minval = 1, maxval = 30, group = G2, tooltip = "ในภาพของครูคือเบรกแล้วกลับเข้ามาปิดในโซนเดิมไม่กี่แท่งถัดมา · ท่าเทรด §7\n🤖 คลาสไม่ได้กำหนดจำนวนแท่ง")
+float c3Big = input.float(1.0, "3 แท่ง: แท่งแรกใหญ่ = เนื้อยาวกว่าค่าเฉลี่ย 20 แท่งกี่เท่า", minval = 0, step = 0.25, group = G2, tooltip = "ครูบอกแค่ว่าแท่งแรกต้องใหญ่ · ท่าเทรด §17\n🤖 คลาสไม่ได้บอกว่าใหญ่เทียบกับอะไร")
+float c3Small = input.float(0.5, "3 แท่ง: แท่งสองเล็ก = เนื้อไม่เกินกี่เท่าของแท่งแรก", minval = 0.05, maxval = 1, step = 0.05, group = G2, tooltip = "แท่งสองยิ่งเล็กยิ่งดี · ท่าเทรด §17\n🤖 คลาสไม่ได้ให้ตัวเลข")
+float c3Long = input.float(1.5, "3 แท่ง: แท่งสามยาวเกิน = เนื้อยาวกว่าแท่งแรกกี่เท่า", minval = 0.5, step = 0.25, group = G2, tooltip = "แท่งสามปิดยาวมาก = ไม่ดี เพราะขึ้นมาเยอะอีกแล้ว · ท่าเทรด §19\n🤖 คลาสไม่ได้ให้ตัวเลข")
+int runN = input.int(20, "3 แท่ง: วิ่งเป็นเทรนด์ = เบรกแนวมาแล้วไม่เกินกี่แท่ง", minval = 3, maxval = 100, group = G2, tooltip = "3 แท่งต้องเกิดหลังจากเบรกออกจากกรอบและวิ่งไปแล้ว · ท่าเทรด §16\n🤖 สคริปต์นับตั้งแต่แท่งที่ 3 หลังเบรก จนถึงจำนวนแท่งนี้")
+float runGap = input.float(0.5, "3 แท่ง: ห่างจากแนวที่เบรกอย่างน้อยกี่ ATR", minval = 0, step = 0.1, group = G2, tooltip = "เกิดตรงขอบกรอบหลังเบรก = Break & Retest ไม่ใช่ 3 แท่ง · ท่าเทรด §16\n🤖 คลาสไม่ได้ให้ตัวเลข")
+int sesAsia = input.int(7,"ช่วงตลาด: เอเชียเริ่มกี่โมง (เวลาไทย)", minval = 0, maxval = 23, group = G2, tooltip = "ครูบอกเวลาโดยประมาณ: เอเชียช่วงเช้า · ลอนดอนราว 14:00–15:00 · นิวยอร์กราว 19:00–20:00 · ตี 2 ถึงตี 3 volume ไม่พอ · ท่าเทรด (ช่วงเวลาที่ตลาดมี volume)\n🤖 ชั่วโมงที่ใช้แบ่งช่วงเป็นของที่ AI ตั้งให้ครบวัน · เรียงตามลำดับ: เอเชีย · ลอนดอน · นิวยอร์ก · ดึก volume น้อย")
+int sesLon = input.int(14, "ช่วงตลาด: ลอนดอนเริ่มกี่โมง", minval = 0, maxval = 23, group = G2)
+int sesNy = input.int(19, "ช่วงตลาด: นิวยอร์กเริ่มกี่โมง", minval = 0, maxval = 23, group = G2)
+int sesQuiet = input.int(2, "ช่วงตลาด: ดึก volume น้อย เริ่มกี่โมง", minval = 0, maxval = 23, group = G2)
+int minPass =input.int(3, "ต้องผ่านอย่างน้อยกี่ข้อ (จาก 4 หรือ 5)", minval = 1, maxval = 5, group = G2, tooltip = "4 ข้อ: ปิดเลยไส้ซ้ายมือ (MTF §6) · พักตัวมาก่อน (MTF §5) · มีไส้ (MTF §9) · ไม่ติดโซน (MTF §9)\n3 = ตามหลักในคลาสว่าต้องมี confirm 3–4 อย่าง · confirm §13\nข้อที่ 5 (เปิดปิดในกลุ่มตลาดอื่น): Silver + DXY สอดคล้องกับเทรนด์ทองทั้งคู่ · Bills §13\nปิดข้อที่ 5 แล้วตั้งไว้ 5 = ใช้ 4")
+string rejHalf = input.string("ทั้งแท่ง", "Rejection: เส้น 50% วัดจาก", options = ["ทั้งแท่ง", "เนื้อ"], group = G2, tooltip = "ที่ป้อนไว้: แท่งถัดไปถ้าเด้ง ไม่ควรเกิน 50% ของแท่ง rejection · confirm §8\nในคลิปและในรูปเป็น 50% ของเนื้อ · คลาสยังไม่ได้บอกว่านับตอนไส้แตะหรือตอนปิด · สคริปต์นับตอนไส้แตะ\nทองคำ 1H 2 ปี: แท่งถัดไปไส้เด้งเกิน 50% ของทั้งแท่ง 69% ของครั้ง · เกิน 50% ของเนื้อ 88% ของครั้ง")
+int evKeep = input.int(3, "ตาราง: ข้อความเหตุการณ์ค้างไว้กี่แท่ง", minval = 1, maxval = 20, group = G2, tooltip = "ใช้กับ \"มีจุดเข้า\" · \"ทะลุแต่ยังไม่เข้า\" · \"เนื้อปิดสวนเทรนด์\"\nเรื่องที่ต่อจาก Rejection (50% · Impulse Entry) แสดงแค่แท่งถัดไปแท่งเดียว ตาม confirm §8, §12")
+
+color C_UP = #089981
+color C_DN = #F23645
+color C_GRAY = #787B86
+color C_SIDE = #5D606B
+color C_AMB = #FF9800
+color C_INK = #131722
+color C_NONE = color.new(#000000, 100)
+int fs = uiSize == "เล็ก" ? 9 : uiSize == "กลาง" ? 11 : 13
+bool atBody = drawAt == "เนื้อเทียน"
+string tzUse = tzShow == "ตามตลาด" ? syminfo.timezone : tzShow
+bool halfBody = rejHalf == "เนื้อ"
+string halfTxt = halfBody ? "50% ของเนื้อแท่ง Rejection" : "50% ของแท่ง Rejection"
+bool omChk = useOm and omCount
+int nChk = omChk ? 5 : 4
+int needPass = math.min(minPass, nChk)
+
+type Zone
+    float top
+    float bot
+    int t0
+    int touch
+    float wick
+
+type Draw
+    float top
+    float bot
+    int t0
+    int touch
+    int rank
+    bool isRes
+    float wick
+
+type Grp
+    float top
+    float bot
+    float wick
+    string tfs
+    string tip
+    int maxRank
+    int touch
+    bool ent
+
+f_add(array<Zone> a, float nt, float nb, float nw, int t, float tol, bool isRes) =>
+    bool merged = false
+    for z in a
+        if nb - tol <= z.top and nt + tol >= z.bot
+            z.top := math.max(z.top, nt)
+            z.bot := math.min(z.bot, nb)
+            z.wick := isRes ? math.max(z.wick, nw) : math.min(z.wick, nw)
+            merged := true
+            break
+    if not merged
+        a.push(Zone.new(nt, nb, t, 1, nw))
+        if a.size() > 30
+            a.shift()
+    merged
+
+f_compact(array<Zone> a, float tol, bool isRes) =>
+    int i = a.size() - 1
+    while i > 0
+        Zone zi = a.get(i)
+        for j = 0 to i - 1
+            Zone zj = a.get(j)
+            if zi.bot - tol <= zj.top and zi.top + tol >= zj.bot
+                zj.top := math.max(zj.top, zi.top)
+                zj.bot := math.min(zj.bot, zi.bot)
+                zj.wick := isRes ? math.max(zj.wick, zi.wick) : math.min(zj.wick, zi.wick)
+                zj.touch += zi.touch
+                zj.t0 := math.min(zj.t0, zi.t0)
+                a.remove(i)
+                break
+        i -= 1
+    a.size()
+
+f_near(array<Zone> a, bool isRes) =>
+    float t1 = na
+    float b1 = na
+    int o1 = na
+    int n1 = na
+    float w1 = na
+    for z in a
+        float key = isRes ? z.bot : -z.top
+        float k1 = isRes ? b1 : -t1
+        if na(k1) or key < k1
+            t1 := z.top
+            b1 := z.bot
+            o1 := z.t0
+            n1 := z.touch
+            w1 := z.wick
+    [t1, b1, o1, n1, w1]
+
+f_track(array<Zone> res, array<Zone> sup, int L, bool useBody, float mergeK) =>
+    float bTop = math.max(open, close)
+    float bBot = math.min(open, close)
+    float ph = ta.pivothigh(useBody ? bTop : high, L, L)
+    float pl = ta.pivotlow(useBody ? bBot : low, L, L)
+    float bodyHi = ta.highest(bTop, 2 * L + 1)
+    float bodyLo = ta.lowest(bBot, 2 * L + 1)
+    float wickHi = ta.highest(high, 2 * L + 1)
+    float wickLo = ta.lowest(low, 2 * L + 1)
+    float atr = ta.atr(14)
+    float tol = useBody ? mergeK * atr : 0.0
+    float h1 = high[1]
+    float l1 = low[1]
+    int tPiv = time[L]
+    float uL = na
+    float uW = na
+    float dL = na
+    float dW = na
+    int i = res.size() - 1
+    while i >= 0
+        Zone z = res.get(i)
+        if close > z.top
+            if na(uL) or z.top > uL
+                uL := z.top
+                uW := z.wick
+            res.remove(i)
+        else if high >= z.bot
+            if h1 < z.bot
+                z.touch += 1
+            if not useBody and high > z.top
+                z.top := high
+                z.wick := high
+        i -= 1
+    int j = sup.size() - 1
+    while j >= 0
+        Zone z = sup.get(j)
+        if close < z.bot
+            if na(dL) or z.bot < dL
+                dL := z.bot
+                dW := z.wick
+            sup.remove(j)
+        else if low <= z.top
+            if l1 > z.top
+                z.touch += 1
+            if not useBody and low < z.bot
+                z.bot := low
+                z.wick := low
+        j -= 1
+    if not na(ph)
+        f_add(res, ph, useBody ? ph : math.min(bodyHi, ph - syminfo.mintick), useBody ? wickHi : ph, tPiv, tol, true)
+    if not na(pl)
+        f_add(sup, useBody ? pl : math.max(bodyLo, pl + syminfo.mintick), pl, useBody ? wickLo : pl, tPiv, tol, false)
+    f_compact(res, tol, true)
+    f_compact(sup, tol, false)
+    [uL, uW, dL, dW]
+
+f_src(int L, int off, bool useBody, float mergeK) =>
+    var array<Zone> res = array.new<Zone>()
+    var array<Zone> sup = array.new<Zone>()
+    [_u1, _u2, _d1, _d2] = f_track(res, sup, L, useBody, mergeK)
+    [rt, rb, ro, rn, rw] = f_near(res, true)
+    [st, sb, so, sn, sw] = f_near(sup, false)
+    [rt[off], rb[off], ro[off], rn[off], rw[off], st[off], sb[off], so[off], sn[off], sw[off]]
+
+f_entry(int L, int off, bool useBody, float mergeK, int nBars, float tailK) =>
+    var array<Zone> res = array.new<Zone>()
+    var array<Zone> sup = array.new<Zone>()
+    var int cUp = 0
+    var int cDn = 0
+    cUp := close > open ? cUp + 1 : 0
+    cDn := close < open ? cDn + 1 : 0
+    [uL, uW, dL, dW] = f_track(res, sup, L, useBody, mergeK)
+    [rt, rb, ro, rn, rw] = f_near(res, true)
+    [st, sb, so, sn, sw] = f_near(sup, false)
+    float rng = math.max(high - low, syminfo.mintick)
+    bool uOkW = close > uW
+    bool uOkP = cUp < nBars
+    bool uOkT = high - math.max(open, close) > tailK * rng
+    bool dOkW = close < dW
+    bool dOkP = cDn < nBars
+    bool dOkT = math.min(open, close) - low > tailK * rng
+    float atr = ta.atr(14)
+    float body = math.abs(close - open)
+    float relB = body / ta.sma(body, 20)[1]
+    float uDist = (close - uL) / atr[1]
+    float dDist = (dL - close) / atr[1]
+    bool engUp = close > open and close[1] < open[1] and close[2] < open[2] and close > math.max(high[1], high[2])
+    bool engDn = close < open and close[1] > open[1] and close[2] > open[2] and close < math.min(low[1], low[2])
+    int eng = engUp ? 1 : engDn ? -1 : 0
+    var float kU = na
+    var int aU = 0
+    var bool pU = false
+    var bool nU = false
+    var bool fU = false
+    var float xU = na
+    var float kD = na
+    var int aD = 0
+    var bool pD = false
+    var bool nD = false
+    var bool fD = false
+    var float xD = na
+    int keepN = math.max(retB, math.max(foN, runN))
+    int rtU = 0
+    int rtD = 0
+    int fo = 0
+    float foLv = na
+    if not na(uL)
+        kU := uL
+        aU := 0
+        pU := false
+        nU := false
+        fU := false
+        xU := uDist
+    else if not na(kU)
+        aU += 1
+        if aU > keepN
+            kU := na
+        else if close < kU
+            if aU <= foN
+                fo := 1
+                foLv := kU
+            kU := na
+        else
+            if not fU
+                if not pU and low <= kU and close > open and aU <= retW
+                    rtU := xU < midAtr ? 1 : 3
+                    fU := true
+                else if pU and nU and close > open and close[1] < open[1] and aU <= retB
+                    rtU := 2
+                    fU := true
+            if close < open
+                pU := true
+            if low <= kU + nearK * atr
+                nU := true
+    if not na(dL)
+        kD := dL
+        aD := 0
+        pD := false
+        nD := false
+        fD := false
+        xD := dDist
+    else if not na(kD)
+        aD += 1
+        if aD > keepN
+            kD := na
+        else if close > kD
+            if aD <= foN and fo == 0
+                fo := -1
+                foLv := kD
+            kD := na
+        else
+            if not fD
+                if not pD and high >= kD and close < open and aD <= retW
+                    rtD := xD < midAtr ? 1 : 3
+                    fD := true
+                else if pD and nD and close < open and close[1] > open[1] and aD <= retB
+                    rtD := 2
+                    fD := true
+            if close > open
+                pD := true
+            if high >= kD - nearK * atr
+                nD := true
+    float rLvU = rtU > 0 ? kU : na
+    float rLvD = rtD > 0 ? kD : na
+    float avgB = ta.sma(body, 20)
+    bool sz3 = body[2] >= c3Big * avgB[3] and body[1] <= c3Small * body[2]
+    bool c3u = sz3 and close[2] > open[2] and close > open and close > math.max(high[1], high[2])
+    bool c3d = sz3 and close[2] < open[2] and close < open and close < math.min(low[1], low[2])
+    bool trU = not na(kU) and aU >= 3 and aU <= runN and math.min(low, math.min(low[1], low[2])) > kU + runGap * atr
+    bool trD = not na(kD) and aD >= 3 and aD <= runN and math.max(high, math.max(high[1], high[2])) < kD - runGap * atr
+    bool long3 = body > c3Long * body[2]
+    int c3 = c3u ? (not trU ? 2 : long3 ? 3 : 1) : c3d ? (not trD ? -2 : long3 ? -3 : -1) : 0
+    [uL[off], uW[off], uOkW[off], uOkP[off], uOkT[off], cUp[off], rb[off], dL[off], dW[off], dOkW[off], dOkP[off], dOkT[off], cDn[off], st[off], close[off], atr[off], time[off], relB[off], uDist[off], dDist[off], open[off], high[off], low[off], eng[off], rt[off], sb[off], rtU[off], rtD[off], rLvU[off], rLvD[off], fo[off], foLv[off], c3[off]]
+
+f_trend(int L, int nTouch, int off) =>
+    var int st = 0
+    var float pk = na
+    var float tr = na
+    var float topH = na
+    var float botL = na
+    var float sup = na
+    var float res = na
+    var float boxT = na
+    var float boxB = na
+    var bool pulled = false
+    var int touches = 0
+    var bool touchPrev = false
+    float bTop = math.max(open, close)
+    float bBot = math.min(open, close)
+    float ph = ta.pivothigh(bTop, L, L)
+    float pl = ta.pivotlow(bBot, L, L)
+    bool newPk = not na(ph)
+    bool newTr = not na(pl)
+    if newPk
+        pk := ph
+    if newTr
+        tr := pl
+    bool touch = false
+    if st == 0
+        if not na(pk) and close > pk
+            st := 1
+            topH := close
+            sup := na(tr) ? bBot : tr
+            pulled := false
+            touches := 0
+        else if not na(tr) and close < tr
+            st := -1
+            botL := close
+            res := na(pk) ? bTop : pk
+            pulled := false
+            touches := 0
+    else if st == 1
+        if newTr
+            pulled := true
+            if tr > sup
+                sup := tr
+        if close < sup
+            st := -1
+            botL := close
+            res := na(pk) ? topH : pk
+            pulled := false
+            touches := 0
+        else if close > topH
+            topH := close
+            pulled := false
+            touches := 0
+        else
+            touch := pulled and high >= topH
+            if touch and not touchPrev
+                touches += 1
+            if touches >= nTouch
+                st := 2
+                boxT := topH
+                boxB := sup
+    else if st == -1
+        if newPk
+            pulled := true
+            if pk < res
+                res := pk
+        if close > res
+            st := 1
+            topH := close
+            sup := na(tr) ? botL : tr
+            pulled := false
+            touches := 0
+        else if close < botL
+            botL := close
+            pulled := false
+            touches := 0
+        else
+            touch := pulled and low <= botL
+            if touch and not touchPrev
+                touches += 1
+            if touches >= nTouch
+                st := 2
+                boxT := res
+                boxB := botL
+    else
+        if close > boxT
+            st := 1
+            topH := close
+            sup := na(tr) or tr >= close ? boxB : tr
+            pulled := false
+            touches := 0
+        else if close < boxB
+            st := -1
+            botL := close
+            res := na(pk) or pk <= close ? boxT : pk
+            pulled := false
+            touches := 0
+    touchPrev := touch
+    float gUp = st == 1 ? topH : st == -1 ? res : st == 2 ? boxT : na
+    float gDn = st == 1 ? sup : st == -1 ? botL : st == 2 ? boxB : na
+    [st[off], gUp[off], gDn[off], touches[off]]
+
+f_dir(int L, int nTouch, int off) =>
+    [dSt, _g1, _g2, _g3] = f_trend(L, nTouch, off)
+    dSt
+
+f_setup(int L, int nTouch, int off) =>
+    [est, eUp, eDn, _et] = f_trend(L, nTouch, 0)
+    float atr = ta.atr(14)
+    float body = math.abs(close - open)
+    var int cu = 0
+    var int cd = 0
+    int cuP = cu
+    int cdP = cd
+    cu := close > open ? cu + 1 : 0
+    cd := close < open ? cd + 1 : 0
+    int tc = 0
+    float tcLv = na
+    float tcDi = na
+    bool tcWk = false
+    if est == -1 and est[1] == 1
+        tc := -1
+        tcLv := eDn[1]
+        tcDi := (eDn[1] - close) / atr[1]
+        tcWk := math.min(open, close) - low > body
+    else if est == 1 and est[1] == -1
+        tc := 1
+        tcLv := eUp[1]
+        tcDi := (close - eUp[1]) / atr[1]
+        tcWk := high - math.max(open, close) > body
+    int ft = 0
+    if est == 1 and cdP >= 2 and close > open
+        ft := body > body[1] ? 1 : 2
+    else if est == -1 and cuP >= 2 and close < open
+        ft := body > body[1] ? -1 : -2
+    float ftTop = est == 1 ? eUp : est == -1 ? eDn : na
+    int ftN = est == 1 ? cdP : cuP
+    [tc[off], tcLv[off], tcDi[off], tcWk[off], ft[off], ftTop[off], ftN[off]]
+
+f_tfName(string tf) =>
+    float m = str.tonumber(tf)
+    tf == "D" or tf == "1D" ? "Daily" : tf == "W" or tf == "1W" ? "Weekly" : na(m) ? tf : m % 60 == 0 ? str.tostring(m / 60) + "H" : str.tostring(m) + "m"
+
+f_tfThai(string tf) =>
+    float m = str.tonumber(tf)
+    tf == "D" or tf == "1D" ? "Daily" : tf == "W" or tf == "1W" ? "Weekly" : na(m) ? tf : m % 60 == 0 ? str.tostring(m / 60) + " ชั่วโมง" : str.tostring(m) + " นาที"
+
+f_px(float v) =>
+    str.tostring(v, format.mintick)
+
+f_range(float t, float b) =>
+    t - b < syminfo.mintick ? f_px(t) : f_px(b) + " – " + f_px(t)
+
+f_half(float o, float h, float l, float c) =>
+    halfBody ? (o + c) / 2 : (h + l) / 2
+
+f_pos(string p) =>
+    p == "ขวาบน" ? position.top_right : p == "ขวากลาง" ? position.middle_right : p == "ขวาล่าง" ? position.bottom_right : p == "ซ้ายบน" ? position.top_left : position.bottom_left
+
+f_ses(int h) =>
+    h >= sesQuiet and h < sesAsia ? "ดึก · volume น้อย" : h >= sesAsia and h < sesLon ? "เอเชีย" : h >= sesLon and h < sesNy ? "ลอนดอน" : "นิวยอร์ก"
+
+f_cell(table t, int c, int r, string txt, color tc, int sz, string ha, color bg, bool bold, string tip) =>
+    table.cell(t, c, r, txt, text_color = tc, text_size = sz, text_halign = ha, bgcolor = bg, text_formatting = bold ? text.format_bold : text.format_none, tooltip = tip)
+
+int secC = timeframe.in_seconds()
+int secE1 = timeframe.in_seconds(tfE1)
+int secE2 = timeframe.in_seconds(tfE2)
+int stubN = int(math.max(8, math.min(60, math.round(4.0 * math.max(onE1 ? secE1 : 0, onE2 ? secE2 : 0) / math.max(secC, 1)))))
+int o1 = timeframe.in_seconds(tf1) > secC ? 1 : 0
+int o2 = timeframe.in_seconds(tf2) > secC ? 1 : 0
+int o3 = timeframe.in_seconds(tf3) > secC ? 1 : 0
+int o4 = timeframe.in_seconds(tf4) > secC ? 1 : 0
+int oT = timeframe.in_seconds(tfT) > secC ? 1 : 0
+int oE1 = secE1 > secC ? 1 : 0
+int oE2 = secE2 > secC ? 1 : 0
+[r1t, r1b, r1o, r1n, r1w, s1t, s1b, s1o, s1n, s1w] = request.security(syminfo.tickerid, tf1, f_src(swingLen, o1, atBody, mergeAtr), lookahead = o1 == 1 ? barmerge.lookahead_on : barmerge.lookahead_off)
+[r2t, r2b, r2o, r2n, r2w, s2t, s2b, s2o, s2n, s2w] = request.security(syminfo.tickerid, tf2, f_src(swingLen, o2, atBody, mergeAtr), lookahead = o2 == 1 ? barmerge.lookahead_on : barmerge.lookahead_off)
+[r3t, r3b, r3o, r3n, r3w, s3t, s3b, s3o, s3n, s3w] = request.security(syminfo.tickerid, tf3, f_src(swingLen, o3, atBody, mergeAtr), lookahead = o3 == 1 ? barmerge.lookahead_on : barmerge.lookahead_off)
+[r4t, r4b, r4o, r4n, r4w, s4t, s4b, s4o, s4n, s4w] = request.security(syminfo.tickerid, tf4, f_src(swingLen, o4, atBody, mergeAtr), lookahead = o4 == 1 ? barmerge.lookahead_on : barmerge.lookahead_off)
+[tSt, tUp, tDn, tTouch] = request.security(syminfo.tickerid, tfT, f_trend(trendLen, sideN, oT), lookahead = oT == 1 ? barmerge.lookahead_on : barmerge.lookahead_off)
+[e1uL, e1uW, e1uOkW, e1uOkP, e1uOkT, e1cU, e1rN, e1dL, e1dW, e1dOkW, e1dOkP, e1dOkT, e1cD, e1sN, e1C, e1A, e1T, e1RB, e1uD, e1dD, e1O, e1H, e1L, e1G, e1rT, e1sB, e1RtU, e1RtD, e1RLU, e1RLD, e1Fo, e1FoL, e1C3] = request.security(syminfo.tickerid, tfE1, f_entry(swingLen, oE1, atBody, mergeAtr, upBars, tailPct / 100), lookahead = oE1 == 1 ? barmerge.lookahead_on : barmerge.lookahead_off)
+[e2uL, e2uW, e2uOkW, e2uOkP, e2uOkT, e2cU, e2rN, e2dL, e2dW, e2dOkW, e2dOkP, e2dOkT, e2cD, e2sN, e2C, e2A, e2T, e2RB, e2uD, e2dD, e2O, e2H, e2L, e2G, e2rT, e2sB, e2RtU, e2RtD, e2RLU, e2RLD, e2Fo, e2FoL, e2C3] = request.security(syminfo.tickerid, tfE2, f_entry(swingLen, oE2, atBody, mergeAtr, upBars, tailPct / 100), lookahead = oE2 == 1 ? barmerge.lookahead_on : barmerge.lookahead_off)
+int omS = request.security(symS, tfT, f_dir(trendLen, sideN, oT), lookahead = oT == 1 ? barmerge.lookahead_on : barmerge.lookahead_off, ignore_invalid_symbol = true)
+int omD = request.security(symD, tfT, f_dir(trendLen, sideN, oT), lookahead = oT == 1 ? barmerge.lookahead_on : barmerge.lookahead_off, ignore_invalid_symbol = true)
+[t1Tc, t1Lv, t1Di, t1Wk, t1Ft, t1Top, t1N] = request.security(syminfo.tickerid, tfE1, f_setup(trendLen, sideN, oE1), lookahead = oE1 == 1 ? barmerge.lookahead_on : barmerge.lookahead_off)
+[t2Tc, t2Lv, t2Di, t2Wk, t2Ft, t2Top, t2N] = request.security(syminfo.tickerid, tfE2, f_setup(trendLen, sideN, oE2), lookahead = oE2 == 1 ? barmerge.lookahead_on : barmerge.lookahead_off)
+float atrC = ta.atr(14)
+
+var array<string> names =array.from(f_tfName(tf1), f_tfName(tf2), f_tfName(tf3), f_tfName(tf4))
+var array<int> widths = array.from(1, 1, 2, 3)
+var array<int> fills = array.from(90, 87, 83, 78)
+var array<bool> entTf = array.from((onE1 and tf1 == tfE1) or (onE2 and tf1 == tfE2), (onE1 and tf2 == tfE1) or (onE2 and tf2 == tfE2), (onE1 and tf3 == tfE1) or (onE2 and tf3 == tfE2), (onE1 and tf4 == tfE1) or (onE2 and tf4 == tfE2))
+
+bool vis1 = onE1 and secE1 >= secC
+bool vis2 = onE2 and secE2 >= secC
+bool hasR = vis1 or vis2
+bool rdIs1 = vis1 and (not vis2 or secE1 <= secE2)
+string tfR = rdIs1 ? tfE1 : vis2 ? tfE2 : timeframe.period
+int oR = rdIs1 ? oE1 : vis2 ? oE2 : 0
+int secR = rdIs1 ? secE1 : vis2 ? secE2 : secC
+string nT = f_tfThai(tfT)
+string nE1 = f_tfThai(tfE1)
+string nE2 = f_tfThai(tfE2)
+string nR = f_tfThai(tfR)
+
+f_omWord(int s) =>
+    s == 1 ? "ขึ้น" : s == -1 ? "ลง" : s == 2 ? "Sideway" : "–"
+
+f_omRead(int g, int s, int d) =>
+    bool on = g == 1 or g == -1
+    int sA = not on ? 0 : s == g ? 1 : s == -g ? -1 : 0
+    int dA = not on ? 0 : d == -g ? 1 : d == g ? -1 : 0
+    string txt = "Silver " + f_omWord(s) + (sA == 1 ? " ✓" : sA == -1 ? " ✗" : "") + " · DXY " + f_omWord(d) + (dA == 1 ? " ✓" : dA == -1 ? " ✗" : "")
+    int ok = (sA == 1 ? 1 : 0) + (dA == 1 ? 1 : 0)
+    int bad = (sA == -1 ? 1 : 0) + (dA == -1 ? 1 : 0)
+    [txt, ok, bad]
+
+f_omSum(int ok, int bad) =>
+    "สอดคล้อง " + str.tostring(ok) + "/2" + (bad > 0 ? " · ขัด " + str.tostring(bad) : "")
+
+f_omHead(bool counted) =>
+    string r = ""
+    if useOm
+        [txt, ok, bad] = f_omRead(tSt, omS, omD)
+        r := "\nตลาดอื่น " + nT + ": " + txt + " · " + f_omSum(ok, bad) + (counted ? " (นับเป็นเช็กข้อที่ 5)" : " (ประกอบ · ไม่นับในเช็ก)")
+    r
+
+bool chgR = timeframe.change(tfR)
+int tcR = time_close(tfR)
+int toR = time(tfR)
+var float dO = na
+var float dH = na
+var float dL = na
+if oR == 0 or chgR or na(dO)
+    dO := open
+    dH := high
+    dL := low
+else
+    dH := math.max(dH, high)
+    dL := math.min(dL, low)
+
+f_push(array<Draw> a, bool on, float t, float b, int o, int n, float w, int rank, bool isRes) =>
+    if on and not na(t) and not na(b) and not na(o)
+        a.push(Draw.new(t, b, o, n, rank, isRes, w))
+    a.size()
+
+f_box(array<box> bx, Draw d) =>
+    color c = d.isRes ? C_DN : C_UP
+    bx.push(box.new(d.t0, d.top, time, d.bot, xloc = xloc.bar_time, extend = extend.right, border_color = c, border_width = widths.get(d.rank), bgcolor = color.new(C_GRAY, fills.get(d.rank))))
+    bx.size()
+
+f_overlap(Draw a, Draw b, float tol) =>
+    a.bot - tol <= b.top and a.top + tol >= b.bot
+
+f_groups(array<Draw> ds, float tol) =>
+    array<Grp> out = array.new<Grp>()
+    int n = ds.size()
+    if n > 0
+        array<int> grp = array.new<int>(n, -1)
+        int g = 0
+        for i = 0 to n - 1
+            if grp.get(i) == -1
+                grp.set(i, g)
+                bool grew = true
+                while grew
+                    grew := false
+                    for j = 0 to n - 1
+                        if grp.get(j) == -1
+                            for k = 0 to n - 1
+                                if grp.get(k) == g and f_overlap(ds.get(j), ds.get(k), tol)
+                                    grp.set(j, g)
+                                    grew := true
+                                    break
+                g += 1
+        for gi = 0 to g - 1
+            float top = na
+            float bot = na
+            float wick = na
+            string tfs = ""
+            string tip = ""
+            int maxRank = 0
+            int touch = 0
+            bool ent = false
+            for r = 0 to 3
+                for i = 0 to n - 1
+                    Draw d = ds.get(i)
+                    if grp.get(i) == gi and d.rank == r
+                        top := na(top) ? d.top : math.max(top, d.top)
+                        bot := na(bot) ? d.bot : math.min(bot, d.bot)
+                        wick := na(wick) ? d.wick : d.isRes ? math.max(wick, d.wick) : math.min(wick, d.wick)
+                        tfs += (tfs == "" ? "" : " + ") + names.get(r)
+                        tip += names.get(r) + ":  " + f_range(d.top, d.bot) + "  · แตะ " + str.tostring(d.touch) + " ครั้ง\n"
+                        maxRank := r
+                        touch := math.max(touch, d.touch)
+                        ent := ent or entTf.get(r)
+            out.push(Grp.new(top, bot, wick, tfs, tip, maxRank, touch, ent))
+    out
+
+f_labels(array<label> lb, array<Grp> gs, bool isRes, int iNear, string tagEnt, string tagFree, int iPend) =>
+    int n = gs.size()
+    if n > 0
+        string side = isRes ? "แนวต้าน " : "แนวรับ "
+        string edge = atBody ? "เส้นอยู่ที่เนื้อเทียน (ราคาเปิด/ปิดสุด) ไม่นับไส้" : isRes ? "ขอบบน = ปลายไส้สูงสุด · ขอบล่าง = เนื้อเทียน · S/R §5" : "ขอบล่าง = ปลายไส้ต่ำสุด · ขอบบน = เนื้อเทียน · S/R §5"
+        string brk = isRes ? "ทะลุ = แท่งของ TF นั้นปิดเหนือขอบบน แล้วโซนจะถูกลบ · S/R §8, §14" : "ทะลุ = แท่งของ TF นั้นปิดใต้ขอบล่าง แล้วโซนจะถูกลบ · S/R §8, §14"
+        for i = 0 to n - 1
+            Grp g = gs.get(i)
+            string tag = not showTag ? "" : i == iPend ? "รอแท่ง " + g.tfs + " ปิด" : i == iNear ? (g.ent ? tagEnt : tagFree) : ""
+            string txt = side + g.tfs + (showPx ? "\n" + f_range(g.top, g.bot) : "") + (tag == "" ? "" : "\n" + tag)
+            string tipAll = side + g.tfs + "\n\n" + g.tip + "\n" + edge + "\n" + brk + "\nยิ่งเป็นโซนของ TF ใหญ่ ยิ่งสำคัญ · MTF §1\nยิ่งแตะหลายครั้งยิ่งห้ามเล่น · S/R §12" + (tag == "" ? "" : "\n\n" + tag + "\nรอแท่งปิดก่อนเสมอ ไส้ทะลุไม่นับ · S/R §3 · Trend §18")
+            lb.push(label.new(bar_index + 2, isRes ? g.top : g.bot, txt, color = C_NONE, style = isRes ? label.style_label_lower_left : label.style_label_upper_left, textcolor = isRes ? C_DN : C_UP, size = g.maxRank >= 2 ? fs + 1 : fs, textalign = text.align_left, text_formatting = g.maxRank >= 2 ? text.format_bold : text.format_none, tooltip = tipAll))
+    lb.size()
+
+f_empty(array<label> lb, bool isRes) =>
+    string txt = "ยังไม่มี" + (isRes ? "แนวต้าน" : "แนวรับ") + "ทางซ้ายมือ"
+    string tip = "ราคาปิดทะลุโซนเดิมของทุก TF ไปหมดแล้ว · รอให้ราคากลับตัว" + (isRes ? "ลง" : "ขึ้น") + " แล้วจะเกิดโซนใหม่ · S/R คลิปวันที่ 7 นาที 50"
+    lb.push(label.new(bar_index + 2, isRes ? high : low, txt, color = C_NONE, style = isRes ? label.style_label_lower_left : label.style_label_upper_left, textcolor = color.new(chart.fg_color, 20), size = fs, textalign = text.align_left, tooltip = tip))
+    lb.size()
+
+f_pick(array<Grp> a, bool isRes, float c) =>
+    int i1 = -1
+    int i2 = -1
+    int ip = -1
+    float k1 = na
+    float k2 = na
+    float kp = na
+    int n = a.size()
+    if n > 0
+        for i = 0 to n - 1
+            Grp g = a.get(i)
+            bool beyond = isRes ? c > g.top : c < g.bot
+            float key = isRes ? g.bot : -g.top
+            if beyond
+                if ip == -1 or key > kp
+                    ip := i
+                    kp := key
+            else if i1 == -1 or key < k1
+                i2 := i1
+                k2 := k1
+                i1 := i
+                k1 := key
+            else if i2 == -1 or key < k2
+                i2 := i
+                k2 := key
+    [i1, i2, ip]
+
+f_hit(array<Grp> a, bool isRes, float bo, float bh, float bl) =>
+    int ih = -1
+    float kh = na
+    int n = a.size()
+    if n > 0
+        for i = 0 to n - 1
+            Grp g = a.get(i)
+            bool hit = isRes ? bh >= g.bot and bo <= g.top : bl <= g.top and bo >= g.bot
+            float key = isRes ? g.bot : -g.top
+            if hit and (ih == -1 or key > kh)
+                ih := i
+                kh := key
+    ih
+
+f_g(array<Grp> a, int i, bool isRes) =>
+    float nr = na
+    float fr = na
+    string nm = ""
+    int tc = 0
+    bool en = false
+    if i >= 0
+        Grp g = a.get(i)
+        nr := isRes ? g.bot : g.top
+        fr := isRes ? g.top : g.bot
+        nm := g.tfs
+        tc := g.touch
+        en := g.ent
+    [nr, fr, nm, tc, en]
+
+f_room(bool buy, float own, float px, float atrE, string tfN) =>
+    array<float> zs = buy ? array.from(on1 ? r1b : na, on2 ? r2b : na, on3 ? r3b : na, on4 ? r4b : na) : array.from(on1 ? s1t : na, on2 ? s2t : na, on3 ? s3t : na, on4 ? s4t : na)
+    float best = na
+    string bestN = ""
+    if not na(own) and (buy ? own > px : own < px)
+        best := own
+        bestN := tfN
+    for k = 0 to 3
+        float v = zs.get(k)
+        if not na(v) and (buy ? v > px : v < px) and (na(best) or math.abs(v - px) < math.abs(best - px))
+            best := v
+            bestN := names.get(k)
+    float room = na(best) ? na : math.abs(best - px) / atrE
+    bool okR = na(best) or room >= roomAtr
+    [okR, best, bestN, room]
+
+f_eval(bool buy, float wick, bool okW, bool okP, bool okT, int cnt, float own, float px, float atrE, string tfN, float relB, float dist) =>
+    [okR, best, bestN, room] = f_room(buy, own, px, atrE, tfN)
+    [mTxt, mOk, mBad] = f_omRead(tSt, omS, omD)
+    bool okM = omChk and mOk == 2
+    int pass = (okW ? 1 : 0) + (okP ? 1 : 0) + (okT ? 1 : 0) + (okR ? 1 : 0) + (okM ? 1 : 0)
+    string l6 = omChk ? "\n" + (okM ? "✓ " : "✗ ") + "ตลาดอื่น" + f_omSum(mOk, mBad) + ": " + mTxt + " · Bills §13" : ""
+    string sideNext = buy ? "แนวต้าน" : "แนวรับ"
+    string l1 = (okW ? "✓ ปิด" : "✗ ปิด") + (buy ? "เหนือ" : "ใต้") + "ไส้ซ้ายมือ " + f_px(wick) + (okW ? " ได้ = volume จริง" : " ไม่ได้ = volume ไม่จริง") + " · MTF §6"
+    string l2 = (okP ? "✓ " : "✗ ") + (buy ? "ขึ้น" : "ลง") + "ติดกัน " + str.tostring(cnt) + " แท่ง" + (okP ? " = มีพักตัวมาก่อน" : " = ยังไม่พักตัว") + " · MTF §5"
+    string l3 = (okT ? "✓ มีไส้" : "✗ ไม่มีไส้") + (buy ? "บน" : "ล่าง") + (okT ? "" : " = แท่งต่อไป 50/50") + " · MTF §9"
+    string l4 = (okR ? "✓ " : "✗ ") + (na(best) ? "ซ้ายมือโล่ง ไม่มี" + sideNext + "ถัดไป" : sideNext + "ถัดไป " + bestN + " " + f_px(best) + " ห่าง " + str.tostring(room, "#.#") + " ATR" + (okR ? "" : " = ติดโซน")) + " · MTF §9"
+    bool tooLong = relB > bigX
+    bool tooFar = dist > farAtr
+    bool okBig = not useBig or not (tooLong or tooFar)
+    string l5 = (okBig ? "✓ " : "✗ ") + (tooLong or tooFar ? "แท่งยาวเกิน" : "แท่งพอดี") + ": เนื้อ " + str.tostring(relB, "#.#") + " เท่าของค่าเฉลี่ย 20 แท่ง · ปิดเลยแนว " + str.tostring(dist, "#.#") + " ATR" + (tooLong or tooFar ? (useBig ? " = ใช้แรงหมดในแท่งเดียว ไม่เข้า" : " (ปิดข้อนี้ไว้)") : "") + " · confirm §4, §7"
+    bool tooNear = dist < nearAtr
+    bool okNear = not useNear or not tooNear
+    string star = tooNear ? "ปริ่มแนว" : dist < midAtr ? "★★★" : dist <= farAtr ? "★★" : "★"
+    string starW = tooNear ? "ปิดปริ่มแนว = ใกล้ไป" : dist < midAtr ? "★★★ พอดี" : dist <= farAtr ? "★★ เริ่มไกล" : "★ ไกล = มีโอกาสกลับมา retest โซนเดิม"
+    string l5b = (okNear ? "✓ " : "✗ ") + "ระยะเบรก: " + starW + " · ปิดเลยแนว " + str.tostring(dist, "#.##") + " ATR" + (tooNear ? (useNear ? " ไม่เข้า" : " (ปิดข้อนี้ไว้)") : "") + " · ท่าเทรด §2"
+    bool okMust = okBig and okNear
+    array<string> fl = array.new<string>()
+    array<string> fr = array.new<string>()
+    if not okBig
+        fl.push(tooLong ? "แท่งยาวเกิน · เนื้อ " + str.tostring(relB, "#.#") + " เท่าของแท่งอื่น" : "แท่งยาวเกิน · ปิดเลยแนว " + str.tostring(dist, "#.#") + " ATR")
+        fr.push("อย่าไล่ราคา · รอราคากลับมา")
+    if not okNear
+        fl.push("ปิดปริ่มแนว · เลยแนวแค่ " + str.tostring(dist, "#.##") + " ATR")
+        fr.push("ใกล้ไป · รอแท่งที่ปิดเลยแนวชัด ๆ")
+    if not okT
+        fl.push("แท่งทะลุไม่มีไส้" + (buy ? "บน" : "ล่าง") + " = 50/50")
+        fr.push("รอแท่งถัดไปที่มีไส้")
+    if not okP
+        fl.push((buy ? "ขึ้น" : "ลง") + "ติดกัน " + str.tostring(cnt) + " แท่ง")
+        fr.push("รอพักตัวก่อน")
+    if not okR
+        fl.push("ติด" + sideNext + " " + bestN + " " + f_px(best))
+        fr.push("ติดโซน · ยังเข้าไม่ได้")
+    if not okW
+        fl.push("ยังไม่ปิด" + (buy ? "เหนือ" : "ใต้") + "ไส้ซ้ายมือ " + f_px(wick))
+        fr.push("volume ยังไม่จริง")
+    if omChk and not okM
+        fl.push("Silver / DXY ยังไม่สอดคล้องทั้งคู่")
+        fr.push("ตลาดอื่นยังไม่หนุน")
+    int nf = fl.size()
+    [pass, "บังคับ:\n" + l5 + "\n" + l5b + "\n\nนับ " + str.tostring(pass) + "/" + str.tostring(nChk) + ":\n" + l1 + "\n" + l2 + "\n" + l3 + "\n" + l4 + l6, okMust, nf > 0 ? fl.get(0) : "", nf > 0 ? fr.get(0) : "", nf > 1 ? fl.get(1) : "", nf > 1 ? fr.get(1) : "", nf > 2 ? fl.get(2) : "", nf > 2 ? fr.get(2) : "", star]
+
+f_rej(bool buy, float o, float h, float l, float c, bool okT, float own, float atrE, string tfN, bool ownX, string ownName) =>
+    array<float> wNear = buy ? array.from(on1 ? s1t : na, on2 ? s2t : na, on3 ? s3t : na, on4 ? s4t : na) : array.from(on1 ? r1b : na, on2 ? r2b : na, on3 ? r3b : na, on4 ? r4b : na)
+    array<float> wFar = buy ? array.from(s1b, s2b, s3b, s4b) : array.from(r1t, r2t, r3t, r4t)
+    array<int> wCnt = buy ? array.from(s1n, s2n, s3n, s4n) : array.from(r1n, r2n, r3n, r4n)
+    array<float> kNear = buy ? array.from(on1 ? r1b : na, on2 ? r2b : na, on3 ? r3b : na, on4 ? r4b : na) : array.from(on1 ? s1t : na, on2 ? s2t : na, on3 ? s3t : na, on4 ? s4t : na)
+    string wN = ""
+    int wT = 0
+    string xN = ownX ? ownName : ""
+    float wLv = na
+    string kN = ""
+    for k = 0 to 3
+        float nr = wNear.get(k)
+        float fr = wFar.get(k)
+        if not na(nr)
+            bool back = buy ? l <= nr and o > nr and c > nr : h >= nr and o < nr and c < nr
+            bool bey = buy ? o >= fr and c < fr : o <= fr and c > fr
+            if back
+                wN += (wN == "" ? "" : " + ") + names.get(k)
+                wT := math.max(wT, nz(wCnt.get(k)))
+                wLv := na(wLv) ? nr : wLv
+            if bey and not (ownX and names.get(k) == ownName)
+                xN += (xN == "" ? "" : " + ") + names.get(k)
+        float kr = kNear.get(k)
+        if not na(kr)
+            bool xb = buy ? h >= kr and o < kr and c < kr : l <= kr and o > kr and c > kr
+            if xb
+                kN += (kN == "" ? "" : " + ") + names.get(k)
+    float body = math.abs(c - o)
+    float upW = h - math.max(o, c)
+    float loW = math.min(o, c) - l
+    bool colOk = buy ? c > o : c < o
+    bool longW = buy ? loW > body and loW > upW : upW > body and upW > loW
+    bool isRej = wN != "" and colOk and longW
+    [okR, best, bestN, room] = f_room(buy, own, c, atrE, tfN)
+    int code = isRej ? (not okT ? 7 : not okR ? 8 : 3) : wN != "" ? 4 : xN != "" ? 5 : kN != "" ? 6 : 0
+    string zn = code == 5 ? xN : code == 6 ? kN : wN
+    string blk = ""
+    if code == 3
+        string wS = buy ? "แนวรับ" : "แนวต้าน"
+        string kS = buy ? "แนวต้าน" : "แนวรับ"
+        blk := tfN + " · ชน" + wS + " " + wN + " (แตะมาแล้ว " + str.tostring(wT) + " ครั้ง) แล้วปิดกลับ · ปิด " + f_px(c) + "\n✓ ปิด" + (buy ? "เขียว" : "แดง") + " ไส้" + (buy ? "ล่าง" : "บน") + "ยาวกว่าเนื้อ = Rejection · confirm §8\n✓ มีไส้" + (buy ? "บน" : "ล่าง") + " ไม่ใช่ 50/50 · แท่งเทียน §3\n✓ " + (na(best) ? "ซ้ายมือโล่ง ไม่มี" + kS + "ถัดไป" : kS + "ถัดไป " + bestN + " " + f_px(best) + " ห่าง " + str.tostring(room, "#.#") + " ATR") + " · MTF §9\n\nโน้ตเตือน: Rejection อย่างเดียวไม่ค่อยชัวร์ · confirm §9\nconfirm เพิ่มที่รอได้ในแท่งถัดไป:\n· " + (buy ? "ทะลุ high " + f_px(h) : "หลุด low " + f_px(l)) + " ของแท่งนี้ = Impulse Entry ไม่ต้องรอแท่งปิด · confirm §12 · MTF §2\n· เนื้อปิด" + (buy ? "เหนือ" : "ใต้") + kS + " = ทำลายโครงสร้าง confirm ทันที · confirm §9\n· เด้งไม่ควรเกิน " + halfTxt + " = " + f_px(f_half(o, h, l, c)) + " · confirm §8\nยิ่งแตะหลายครั้งยิ่งห้ามเล่น · S/R §12\n🤖 รูปทรงไส้เป็นของที่ AI ใส่เอง"
+    [code, zn, wT, blk, colOk, wLv]
+
+bool new1 = vis1 and e1T != e1T[1] and (oE1 == 1 or barstate.isconfirmed)
+bool new2 = vis2 and e2T != e2T[1] and (oE2 == 1 or barstate.isconfirmed)
+bool rdy = rdIs1 ? new1 : new2
+bool trendOn = tSt == 1 or tSt == -1
+bool buy = tSt == 1
+var string lastTxt = "ยังไม่มี"
+var string lastTip = "ยังไม่มีจุดเข้าในช่วงกราฟนี้"
+var int lastDir = 0
+var label entLb = na
+var int entBar = na
+var int entDir = 0
+var bool entOff0 = false
+var string entTfs = ""
+var string entTip = ""
+var string entStar = ""
+var string evStar = ""
+var int evCode = 0
+var int evAge = 0
+var int evSpan = 1
+var int evDir = 0
+var int evBar = na
+var bool evOwn = false
+var string evWho = ""
+var string evZ = ""
+var int evTouch = 0
+var float evPx = na
+var float evHi = na
+var float evLo = na
+var float evMid = na
+var int evPass = 0
+var bool evEng = false
+var bool evWrong = false
+var bool evIE = false
+var bool evOver = false
+var string evL1 = ""
+var string evR1 = ""
+var string evL2 = ""
+var string evR2 = ""
+var string evL3 = ""
+var string evR3 = ""
+var int cntBrk = 0
+var int cntRej = 0
+var int cntRet = 0
+var int cntC3 = 0
+var int cntTc = 0
+var float entLv = na
+var int entLvDir = 0
+var string evKind = ""
+var bool evIsBrk = true
+bool newEv = false
+
+if tSt != tSt[1]
+    evCode := 0
+    entLv := na
+
+if trendOn
+    string sideK = buy ? "แนวต้าน" : "แนวรับ"
+    string act = buy ? "Buy" : "Sell"
+    string okTf = ""
+    string failTf = ""
+    string tips = ""
+    float pxE = na
+    float lvE = na
+    bool ok0 = false
+    bool ok1 = false
+    int passE = 0
+    bool engE = false
+    string starE = ""
+    string retTf = ""
+    int retK = 0
+    float retLv = na
+    float retPx = na
+    string c3Tf = ""
+    float c3Px = na
+    bool foHit = false
+    string foTf = ""
+    float foPx = na
+    string tcTf = ""
+    float tcLvE = na
+    float tcPx = na
+    float tcDiE = na
+    string ftTf = ""
+    float ftPx = na
+    float ftTopE = na
+    int ftNE = 0
+    string a1 = ""
+    string b1 = ""
+    string a2 = ""
+    string b2 = ""
+    string a3 = ""
+    string b3 = ""
+    string rejTf = ""
+    string rejTips = ""
+    string rejZ = ""
+    int rejT = 0
+    float rejH = na
+    float rejL = na
+    float rejM = na
+    float rejPx = na
+    float rejLv = na
+    int rejSpan = 1
+    bool rejOwn = false
+    int rdCode = 0
+    string rdZ = ""
+    int rdT = 0
+    bool rdWrong = false
+    bool brk1 = new1 and not na(buy ? e1uL : e1dL)
+    bool brk2 = new2 and not na(buy ? e2uL : e2dL)
+    if brk1
+        [p, tp, big, x1, y1, x2, y2, x3, y3, sr] = f_eval(buy, buy ? e1uW : e1dW, buy ? e1uOkW : e1dOkW, buy ? e1uOkP : e1dOkP, buy ? e1uOkT : e1dOkT, buy ? e1cU : e1cD, buy ? e1rN : e1sN, e1C, e1A, nE1, e1RB, buy ? e1uD : e1dD)
+        tips += (tips == "" ? "" : "\n\n") + nE1 + " · ปิด " + f_px(e1C) + " ทะลุ" + sideK + " " + f_px(buy ? e1uL : e1dL) + "\n" + tp + (e1G == tSt ? "\n+ แท่งกลืนกิน = volume เยอะ · confirm §17" : "")
+        pxE := e1C
+        if p >= needPass and big
+            starE := starE == "" ? sr : starE
+            okTf += (okTf == "" ? "" : " + ") + nE1
+            lvE := na(lvE) ? (buy ? e1uL : e1dL) : lvE
+            ok0 := ok0 or oE1 == 0
+            ok1 := ok1 or oE1 == 1
+            passE := p
+            engE := engE or e1G == tSt
+        else
+            failTf += (failTf == "" ? "" : " + ") + nE1
+            if a1 == ""
+                a1 := x1
+                b1 := y1
+                a2 := x2
+                b2 := y2
+                a3 := x3
+                b3 := y3
+    if brk2
+        [p, tp, big, x1, y1, x2, y2, x3, y3, sr] = f_eval(buy, buy ? e2uW : e2dW, buy ? e2uOkW : e2dOkW, buy ? e2uOkP : e2dOkP, buy ? e2uOkT : e2dOkT, buy ? e2cU : e2cD, buy ? e2rN : e2sN, e2C, e2A, nE2, e2RB, buy ? e2uD : e2dD)
+        tips += (tips == "" ? "" : "\n\n") + nE2 + " · ปิด " + f_px(e2C) + " ทะลุ" + sideK + " " + f_px(buy ? e2uL : e2dL) + "\n" + tp + (e2G == tSt ? "\n+ แท่งกลืนกิน = volume เยอะ · confirm §17" : "")
+        pxE := na(pxE) ? e2C : pxE
+        if p >= needPass and big
+            starE := starE == "" ? sr : starE
+            okTf += (okTf == "" ? "" : " + ") + nE2
+            lvE := na(lvE) ? (buy ? e2uL : e2dL) : lvE
+            ok0 := ok0 or oE2 == 0
+            ok1 := ok1 or oE2 == 1
+            passE := math.max(passE, p)
+            engE := engE or e2G == tSt
+        else
+            failTf += (failTf == "" ? "" : " + ") + nE2
+            if a1 == ""
+                a1 := x1
+                b1 := y1
+                a2 := x2
+                b2 := y2
+                a3 := x3
+                b3 := y3
+    if new1 and not brk1
+        [cd, zn, zt, blk, colOk, zlv] = f_rej(buy, e1O, e1H, e1L, e1C, buy ? e1uOkT : e1dOkT, buy ? e1rN : e1sN, e1A, nE1, not na(buy ? e1dL : e1uL), f_tfName(tfE1))
+        if cd == 3 and useRej
+            rejTf += (rejTf == "" ? "" : " + ") + nE1
+            rejTips += (rejTips == "" ? "" : "\n\n") + blk
+            rejZ := zn
+            rejT := zt
+            rejH := e1H
+            rejL := e1L
+            rejM := f_half(e1O, e1H, e1L, e1C)
+            rejPx := e1C
+            rejLv := zlv
+            rejSpan := math.max(1, int(math.round(secE1 / math.max(secR, 1))))
+            rejOwn := oE1 == 0
+        if rdIs1
+            rdCode := cd
+            rdZ := zn
+            rdT := zt
+            rdWrong := not colOk
+    if new2 and not brk2
+        [cd, zn, zt, blk, colOk, zlv] = f_rej(buy, e2O, e2H, e2L, e2C, buy ? e2uOkT : e2dOkT, buy ? e2rN : e2sN, e2A, nE2, not na(buy ? e2dL : e2uL), f_tfName(tfE2))
+        if cd == 3 and useRej
+            rejTf += (rejTf == "" ? "" : " + ") + nE2
+            rejTips += (rejTips == "" ? "" : "\n\n") + blk
+            if not rdIs1 or na(rejH)
+                rejZ := zn
+                rejT := zt
+                rejH := e2H
+                rejL := e2L
+                rejM := f_half(e2O, e2H, e2L, e2C)
+                rejPx := e2C
+                rejLv := zlv
+                rejSpan := math.max(1, int(math.round(secE2 / math.max(secR, 1))))
+                rejOwn := oE2 == 0
+        if not rdIs1
+            rdCode := cd
+            rdZ := zn
+            rdT := zt
+            rdWrong := not colOk
+    int rt1 = buy ? e1RtU : e1RtD
+    int rt2 = buy ? e2RtU : e2RtD
+    if new1 and rt1 > 0
+        retTf := nE1
+        retK := rt1
+        retLv := buy ? e1RLU : e1RLD
+        retPx := e1C
+    if new2 and rt2 > 0 and retK == 0
+        retTf := nE2
+        retK := rt2
+        retLv := buy ? e2RLU : e2RLD
+        retPx := e2C
+    if new1 and e1C3 == tSt
+        c3Tf := nE1
+        c3Px := e1C
+    if new2 and e2C3 == tSt
+        c3Tf += (c3Tf == "" ? "" : " + ") + nE2
+        c3Px := na(c3Px) ? e2C : c3Px
+    if not na(entLv)
+        if new1 and e1Fo == entLvDir and math.abs(e1FoL - entLv) <= syminfo.mintick
+            foHit := true
+            foTf := nE1
+            foPx := e1C
+        if new2 and e2Fo == entLvDir and math.abs(e2FoL - entLv) <= syminfo.mintick
+            foHit := true
+            foTf := nE2
+            foPx := e2C
+    if new1 and t1Tc == tSt and t1Di >= nearAtr and not t1Wk
+        tcTf := nE1
+        tcLvE := t1Lv
+        tcPx := e1C
+        tcDiE := t1Di
+    if new2 and t2Tc == tSt and t2Di >= nearAtr and not t2Wk and tcTf == ""
+        tcTf := nE2
+        tcLvE := t2Lv
+        tcPx := e2C
+        tcDiE := t2Di
+    if new1 and t1Ft == tSt
+        ftTf := nE1
+        ftPx := e1C
+        ftTopE := t1Top
+        ftNE := t1N
+    if new2 and t2Ft == tSt and ftTf == ""
+        ftTf := nE2
+        ftPx := e2C
+        ftTopE := t2Top
+        ftNE := t2N
+    string headT = "เทรนด์ " + nT + ": " + (buy ? "ขาขึ้น → หาจุด Buy" : "ขาลง → หาจุด Sell") + f_omHead(false) + "\nTF ใหญ่หาทิศ · TF เล็กหาจุดเข้า · MTF §3\n"
+    if okTf != ""
+        string head = "เทรนด์ " + nT + ": " + (buy ? "ขาขึ้น → หาจุด Buy" : "ขาลง → หาจุด Sell") + f_omHead(omChk) + "\nTF ใหญ่หาทิศ · TF เล็กหาจุดเข้า · MTF §3\nท่า Breakout: Sideway ในกรอบแล้วเบรก · ดาว = ระยะที่ปิดเลยแนว · ท่าเทรด §1–§2\nแท่งต้องไม่ยาวเกิน ไม่ปิดปริ่มแนว + ผ่านอย่างน้อย " + str.tostring(needPass) + " จาก " + str.tostring(nChk) + " ข้อ\n\n"
+        bool canMerge = not na(entLb) and entBar == bar_index - 1 and entDir == tSt and entOff0 and ok1 and not ok0
+        if canMerge
+            entTfs := okTf + " + " + entTfs
+            entTip := tips + "\n\n" + entTip
+            label.set_text(entLb, "จุดเข้า " + act + " · Breakout " + entStar + "\nทะลุ" + sideK + " " + entTfs)
+            label.set_tooltip(entLb, head + entTip)
+            entBar := na
+        else
+            entLb := label.new(bar_index, buy ? low : high, "จุดเข้า " + act + " · Breakout " + starE + "\nทะลุ" + sideK + " " + okTf, yloc = buy ? yloc.belowbar : yloc.abovebar, style = buy ? label.style_label_up : label.style_label_down, color = buy ? C_UP : C_DN, textcolor = color.white, size = fs - 1, tooltip = head + tips)
+            entBar := bar_index
+            entDir := tSt
+            entOff0 := ok0 and not ok1
+            entTfs := okTf
+            entTip := tips
+            entStar := starE
+            entLv := lvE
+            entLvDir := tSt
+            cntBrk += 1
+            if showLv and not na(lvE)
+                line.new(math.max(bar_index - stubN, 0), lvE, bar_index + 2, lvE, color = buy ? C_UP : C_DN, style = line.style_dotted, width = 2)
+        lastTxt := act + " " + entTfs + " · " + f_px(pxE) + "\n" + str.format_time(time, "dd/MM HH:mm", tzUse)
+        lastTip := head + entTip
+        lastDir := tSt
+        evCode := 1
+        evWho := entTfs
+        evPx := pxE
+        evPass := passE
+        evEng := engE
+        evStar := entStar
+        evKind := "Breakout " + entStar
+        evIsBrk := true
+        newEv := true
+    else if rejTf != ""
+        string head = "เทรนด์ " + nT + ": " + (buy ? "ขาขึ้น → หาจุด Buy" : "ขาลง → หาจุด Sell") + f_omHead(false) + "\nTF ใหญ่หาทิศ · TF เล็กหาจุดเข้า · MTF §3\nจุดเข้าแบบ Rejection: เทรนด์ " + nT + " + ชนแนว + แท่งปิดตามเทรนด์ · confirm §8\n\n"
+        label.new(bar_index, buy ? low : high, "จุดเข้า " + act + " · Rejection\nชน" + (buy ? "แนวรับ " : "แนวต้าน ") + rejZ, yloc = buy ? yloc.belowbar : yloc.abovebar, style = buy ? label.style_label_up : label.style_label_down, color = buy ? C_UP : C_DN, textcolor = color.white, size = fs - 1, tooltip = head + rejTips)
+        entBar := na
+        cntRej += 1
+        if showLv and not na(rejLv)
+            line.new(math.max(bar_index - stubN, 0), rejLv, bar_index + 2, rejLv, color = buy ? C_UP : C_DN, style = line.style_dotted, width = 2)
+        lastTxt := act + " · Rejection " + rejTf + " · " + f_px(rejPx) + "\n" + str.format_time(time, "dd/MM HH:mm", tzUse)
+        lastTip := head + rejTips
+        lastDir := tSt
+        evCode := 3
+        evWho := rejTf
+        evZ := rejZ
+        evTouch := rejT
+        evPx := rejPx
+        evHi := rejH
+        evLo := rejL
+        evMid := rejM
+        evSpan := rejSpan
+        evOwn := rejOwn
+        newEv := true
+    else if retK == 1 and useRet
+        string retTip = headT + "ท่า Break & Retest ด้วยไส้ · ท่าเทรด §5\n\n" + retTf + " · ปิด " + f_px(retPx) + " · แนวเดิมที่เบรก " + f_px(retLv) + "\n✓ เบรกแนวมาแล้วไม่เกิน " + str.tostring(retW) + " แท่ง และแท่งเบรกปิดไม่ไกล (★★★)\n✓ ไส้" + (buy ? "ล่าง" : "บน") + "กลับมาแตะแนวเดิม แล้วปิดเป็นแท่ง" + (buy ? "ขาขึ้น" : "ขาลง") + "\nครูชอบแบบนี้เพราะเบรกแล้วอยากให้ไปเลย ไม่ใช่กลับมาสะสมแรงใหม่ · ท่าเทรด §6\nครูเข้าแบบ Impulse Entry ตอนทะลุ " + (buy ? "high" : "low") + " แท่งก่อนหน้า · ป้ายนี้ขึ้นหลังแท่งปิด\nทดสอบทองคำ 1H 2.4 ปี (146 ครั้ง): 4 แท่งถัดไปเฉลี่ย +0.06 ATR · 8 แท่ง +0.29 ATR · ไปถูกทาง 53% = ได้เปรียบน้อย"
+        label.new(bar_index, buy ? low : high, "จุดเข้า " + act + " · Break & Retest\nไส้แตะ" + sideK + "เดิม " + retTf, yloc = buy ? yloc.belowbar : yloc.abovebar, style = buy ? label.style_label_up : label.style_label_down, color = buy ? C_UP : C_DN, textcolor = color.white, size = fs - 1, tooltip = retTip)
+        entBar := na
+        cntRet += 1
+        if showLv and not na(retLv)
+            line.new(math.max(bar_index - stubN, 0), retLv, bar_index + 2, retLv, color = buy ? C_UP : C_DN, style = line.style_dotted, width = 2)
+        lastTxt := act + " · Break & Retest " + retTf + " · " + f_px(retPx) + "\n" + str.format_time(time, "dd/MM HH:mm", tzUse)
+        lastTip := retTip
+        lastDir := tSt
+        evCode := 1
+        evWho := retTf
+        evPx := retPx
+        evPass := 0
+        evEng := false
+        evKind := "Break & Retest ด้วยไส้"
+        evIsBrk := false
+        newEv := true
+    else if retK == 2 and showRetB
+        string retTip = headT + "Retest ด้วยเนื้อเทียน · ท่าเทรด §4\n\n" + retTf + " · ปิด " + f_px(retPx) + " · แนวเดิมที่เบรก " + f_px(retLv) + "\n" + (buy ? "แนวต้านเปลี่ยนเป็นแนวรับ" : "แนวรับเปลี่ยนเป็นแนวต้าน") + " = โซนนี้มีนัยยะสำคัญสูงมาก ราคามีโอกาสเคารพเยอะ\nยังไม่ใช่จุดเข้า: ครูบอกว่ามักติดแนวของยอดแท่งเบรก · ครูรอเบรกแนวนั้นอีกทีค่อยเข้า\nทดสอบทองคำ 1H 2.4 ปี ตามเทรนด์ 4H (151 ครั้ง): 4 แท่งถัดไปเฉลี่ย +0.09 ATR · 8 แท่ง +0.24 ATR · ไปถูกทาง 57%"
+        label.new(bar_index, buy ? low : high, "Retest ด้วยเนื้อ " + retTf + "\n" + (buy ? "ต้านเปลี่ยนเป็นรับ" : "รับเปลี่ยนเป็นต้าน") + " · รอเบรกอีกที", yloc = buy ? yloc.belowbar : yloc.abovebar, style = buy ? label.style_label_up : label.style_label_down, color = C_GRAY, textcolor = color.white, size = fs - 2, tooltip = retTip)
+        if showLv and not na(retLv)
+            line.new(math.max(bar_index - stubN, 0), retLv, bar_index + 2, retLv, color = C_GRAY, style = line.style_dotted, width = 2)
+        evCode := 15
+        evWho := retTf
+        evZ := f_px(retLv)
+        evPx := retPx
+        newEv := true
+    else if c3Tf != "" and useC3
+        string c3Tip = headT + "ท่า 3 แท่งมหาประลัย · ท่าเทรด §16–§19\n\n" + c3Tf + " · ปิด " + f_px(c3Px) + "\n✓ เกิดตอนวิ่งเป็นเทรนด์: เบรกแนวของ TF นี้ไปแล้ว และทั้ง 3 แท่งอยู่ห่างจากแนวที่เบรก\n✓ แท่งแรกใหญ่ · แท่งสองเล็ก · แท่งสามปิดเลยไส้ของ 2 แท่งก่อนหน้า\n✓ แท่งสามไม่ยาวเกิน\nหลักของ 3 แท่ง = การพักตัวเล็ก ๆ แล้วไปต่อ · ท่าเทรด §17\nป้ายขึ้นหลังแท่งสามปิด · ครูเข้าแบบ Impulse Entry ตอนแท่งสามทำไส้อีกฝั่งแล้วทะลุได้ด้วย · ท่าเทรด §18\n🤖 เกณฑ์ใหญ่ / เล็ก / วิ่งเป็นเทรนด์ เป็นตัวเลขที่ AI ตั้ง\nทดสอบทองคำ 1H 2.4 ปี (27 ครั้ง · ราวเดือนละครั้ง): 4 แท่งถัดไปเฉลี่ย +0.71 ATR · 8 แท่ง +0.81 ATR · ไปถูกทาง 67% · ตัวอย่างยังน้อย"
+        label.new(bar_index, buy ? low : high, "จุดเข้า " + act + " · 3 แท่งมหาประลัย\n" + c3Tf, yloc = buy ? yloc.belowbar : yloc.abovebar, style = buy ? label.style_label_up : label.style_label_down, color = buy ? C_UP : C_DN, textcolor = color.white, size = fs - 1, tooltip = c3Tip)
+        entBar := na
+        cntC3 += 1
+        lastTxt := act + " · 3 แท่ง " + c3Tf + " · " + f_px(c3Px) + "\n" + str.format_time(time, "dd/MM HH:mm", tzUse)
+        lastTip := c3Tip
+        lastDir := tSt
+        evCode := 1
+        evWho := c3Tf
+        evPx := c3Px
+        evPass := 0
+        evEng := false
+        evKind := "3 แท่งมหาประลัย"
+        evIsBrk := false
+        newEv := true
+    else if tcTf != "" and useTc
+        bool six = tcDiE > farAtr
+        string tcTip = headT + (six ? "ท่าที่ 6 = Trend Change ที่แท่งเปลี่ยนเทรนด์ใหญ่มาก · ท่าเทรด §20\n\n" : "ท่า Trend Change · ท่าเทรด §14–§15\n\n") + tcTf + " · ปิด " + f_px(tcPx) + " · " + (buy ? "ทะลุแนวต้านล่าสุด " : "หลุดแนวรับล่าสุด ") + f_px(tcLvE) + " ไป " + str.tostring(tcDiE, "#.##") + " ATR\n✓ โครงสร้างของ " + tcTf + " พลิกกลับมาทางเดียวกับเทรนด์ " + nT + " = จบจังหวะย่อสวนเทรนด์\n✓ ไม่ได้ปิดปริ่มแนว · ไส้ฝั่งที่ทะลุไม่ยาวกว่าเนื้อ · ท่าเทรด §15\n" + (six ? "แท่งนี้ปิดเลยแนวไปไกล = การเปลี่ยนเทรนด์ที่แรงมาก · ครูรอแท่งถัดไปทำไส้อีกฝั่ง แล้วเข้า Impulse Entry ตอน" + (buy ? "ทะลุ high" : "หลุด low") + " แท่งนี้ · ท่าเทรด §20\nทดสอบทองคำ 1H 2.4 ปี (22 ครั้ง): 4 แท่งถัดไปเฉลี่ย +0.50 ATR · 8 แท่ง +0.77 ATR · ไปถูกทาง 64% · ตัวอย่างยังน้อย" : "เปลี่ยนเทรนด์แล้วไม่ต้องรอ retest · ท่าเทรด (ถามตอบหลัง Trend Change)\nทดสอบทองคำ 1H 2.4 ปี (148 ครั้ง): 4 แท่งถัดไปเฉลี่ย +0.06 ATR · 8 แท่ง +0.14 ATR · ไปถูกทาง 50% = ยังไม่เห็นความได้เปรียบ")
+        label.new(bar_index, buy ? low : high, "จุดเข้า " + act + (six ? " · ท่าที่ 6\nTrend Change แท่งใหญ่ " : " · Trend Change\n" + (buy ? "ทะลุแนวต้านล่าสุด " : "หลุดแนวรับล่าสุด ")) + tcTf, yloc = buy ? yloc.belowbar : yloc.abovebar, style = buy ? label.style_label_up : label.style_label_down, color = buy ? C_UP : C_DN, textcolor = color.white, size = fs - 1, tooltip = tcTip)
+        entBar := na
+        cntTc += 1
+        if showLv and not na(tcLvE)
+            line.new(math.max(bar_index - stubN, 0), tcLvE, bar_index + 2, tcLvE, color = buy ? C_UP : C_DN, style = line.style_dotted, width = 2)
+        lastTxt := act + (six ? " · ท่าที่ 6 " : " · Trend Change ") + tcTf + " · " + f_px(tcPx) + "\n" + str.format_time(time, "dd/MM HH:mm", tzUse)
+        lastTip := tcTip
+        lastDir := tSt
+        evCode := 1
+        evWho := tcTf
+        evPx := tcPx
+        evPass := 0
+        evEng := false
+        evKind := six ? "ท่าที่ 6 (Trend Change)" : "Trend Change"
+        evIsBrk := false
+        newEv := true
+    else if failTf != ""
+        if showFail
+            string head = "เทรนด์ " + nT + ": " + (buy ? "ขาขึ้น → หาจุด Buy" : "ขาลง → หาจุด Sell") + f_omHead(omChk) + "\nTF ใหญ่หาทิศ · TF เล็กหาจุดเข้า · MTF §3\nแท่งต้องไม่ยาวเกิน ไม่ปิดปริ่มแนว + ผ่านอย่างน้อย " + str.tostring(needPass) + " จาก " + str.tostring(nChk) + " ข้อ\n\n"
+            label.new(bar_index, buy ? low : high, "ทะลุแนว ยังไม่เข้า", yloc = buy ? yloc.belowbar : yloc.abovebar, style = buy ? label.style_label_up : label.style_label_down, color = C_GRAY, textcolor = color.white, size = fs - 2, tooltip = head + tips)
+        evCode := 2
+        evWho := failTf
+        evPx := pxE
+        evL1 := a1
+        evR1 := b1
+        evL2 := a2
+        evR2 := b2
+        evL3 := a3
+        evR3 := b3
+        newEv := true
+    else if rdy and rdCode != 0
+        evCode := rdCode
+        evWho := nR
+        evZ := rdZ
+        evTouch := rdT
+        evPx := rdIs1 ? e1C : e2C
+        evHi := rdIs1 ? e1H : e2H
+        evLo := rdIs1 ? e1L : e2L
+        evMid := rdIs1 ? f_half(e1O, e1H, e1L, e1C) : f_half(e2O, e2H, e2L, e2C)
+        evSpan := 1
+        evOwn := oR == 0
+        evWrong := rdWrong
+        newEv := true
+    else if ftTf != ""
+        if useFt
+            string ftTip = headT + "ท่า Follow Trend · ท่าเทรด §10–§12\n\n" + ftTf + " · ปิด " + f_px(ftPx) + "\n✓ โครงสร้างของ " + ftTf + " ไปทางเดียวกับเทรนด์ " + nT + "\n✓ ย่อสวนเทรนด์ " + str.tostring(ftNE) + " แท่ง แล้วเกิดแท่งตามเทรนด์ที่เนื้อใหญ่กว่าแท่งก่อนหน้า · ท่าเทรด §11\nครู: มีโอกาส 80% กลับไป retest " + (buy ? "high" : "low") + " เดิม " + f_px(ftTopE) + " · ท่าเทรด §10\nทดสอบทองคำ 1H 2.4 ปี (469 ครั้ง): 4 แท่งถัดไปเฉลี่ย +0.06 ATR · 8 แท่ง +0.22 ATR · ไปถูกทาง 50% = ได้เปรียบน้อย"
+            label.new(bar_index, buy ? low : high, "จุดเข้า " + act + " · Follow Trend\nย่อ " + str.tostring(ftNE) + " แท่งแล้วกลับ " + ftTf, yloc = buy ? yloc.belowbar : yloc.abovebar, style = buy ? label.style_label_up : label.style_label_down, color = buy ? C_UP : C_DN, textcolor = color.white, size = fs - 1, tooltip = ftTip)
+            entBar := na
+            lastTxt := act + " · Follow Trend " + ftTf + " · " + f_px(ftPx) + "\n" + str.format_time(time, "dd/MM HH:mm", tzUse)
+            lastTip := ftTip
+            lastDir := tSt
+        evCode := 16
+        evWho := ftTf
+        evPx := ftPx
+        evZ := f_px(ftTopE)
+        evTouch := ftNE
+        newEv := true
+    if foHit
+        if showFo
+            label.new(bar_index, buy ? high : low, "Fakeout " + foTf + "\nปิดกลับเข้าแนว", yloc = buy ? yloc.abovebar : yloc.belowbar, style = buy ? label.style_label_down : label.style_label_up, color = C_GRAY, textcolor = color.white, size = fs - 2, tooltip = "ป้าย Breakout ก่อนหน้าทะลุแนว " + f_px(entLv) + " แล้วแท่ง " + foTf + " ปิดกลับเข้ามา " + f_px(foPx) + " = Fakeout · ท่าเทรด §7\nครูบอกว่าอย่าเล่น Fakeout ตอนราคาวิ่งเป็นเทรนด์ · ท่าเทรด §9\nทดสอบทองคำ 1H 2.4 ปี: ป้าย Breakout 61% โดนปิดกลับภายใน 6 แท่ง แต่หลังจากนั้น 4 แท่งราคายังไปตามเทรนด์เฉลี่ย +0.14 ATR (8 แท่ง +0.29)")
+        if not newEv
+            evCode := 14
+            evWho := foTf
+            evZ := f_px(entLv)
+            evPx := foPx
+            newEv := true
+        entLv := na
+    if newEv
+        evAge := 0
+        evDir := tSt
+        evBar := bar_index
+        evIE := false
+        evOver := false
+
+bool rejPre = evCode == 3 or evCode == 7 or evCode == 8
+if rejPre and (bar_index > evBar or not evOwn)
+    if evDir == 1
+        evIE := evIE or high > evHi
+        evOver := evOver or low < evMid
+    else
+        evIE := evIE or low < evLo
+        evOver := evOver or high > evMid
+if not newEv and rdy and evCode != 0
+    evAge += 1
+    if evAge >= (rejPre ? evSpan : evCode == 4 or evCode == 6 ? 1 : evKeep)
+        evCode := 0
+bool rejAct = evCode == 3 or evCode == 7 or evCode == 8
+
+int hz1 = o1 == 0 and not barstate.isconfirmed ? 1 : 0
+int hz2 = o2 == 0 and not barstate.isconfirmed ? 1 : 0
+int hz3 = o3 == 0 and not barstate.isconfirmed ? 1 : 0
+int hz4 = o4 == 0 and not barstate.isconfirmed ? 1 : 0
+int hR = oR == 0 and not barstate.isconfirmed ? 1 : 0
+float ownRT = rdIs1 ? e1rT : e2rT
+float ownSB = rdIs1 ? e1sB : e2sB
+float atrR = rdIs1 ? e1A : e2A
+int runU = rdIs1 ? e1cU : e2cU
+int runD = rdIs1 ? e1cD : e2cD
+
+var array<box> boxes = array.new<box>()
+var array<label> labels = array.new<label>()
+var table tb = table.new(f_pos(panelPos), 2, 9, bgcolor = color.new(chart.bg_color, 4), frame_color = color.new(C_GRAY, 75), frame_width = 1, border_color = C_NONE, border_width = 0)
+if barstate.islast
+    for b in boxes
+        b.delete()
+    for l in labels
+        l.delete()
+    boxes.clear()
+    labels.clear()
+    array<Draw> resD = array.new<Draw>()
+    array<Draw> supD = array.new<Draw>()
+    f_push(resD, on1, r1t[hz1], r1b[hz1], r1o[hz1], r1n[hz1], r1w[hz1], 0, true)
+    f_push(resD, on2, r2t[hz2], r2b[hz2], r2o[hz2], r2n[hz2], r2w[hz2], 1, true)
+    f_push(resD, on3, r3t[hz3], r3b[hz3], r3o[hz3], r3n[hz3], r3w[hz3], 2, true)
+    f_push(resD, on4, r4t[hz4], r4b[hz4], r4o[hz4], r4n[hz4], r4w[hz4], 3, true)
+    f_push(supD, on1, s1t[hz1], s1b[hz1], s1o[hz1], s1n[hz1], s1w[hz1], 0, false)
+    f_push(supD, on2, s2t[hz2], s2b[hz2], s2o[hz2], s2n[hz2], s2w[hz2], 1, false)
+    f_push(supD, on3, s3t[hz3], s3b[hz3], s3o[hz3], s3n[hz3], s3w[hz3], 2, false)
+    f_push(supD, on4, s4t[hz4], s4b[hz4], s4o[hz4], s4n[hz4], s4w[hz4], 3, false)
+    for r = 3 to 0
+        for d in resD
+            if d.rank == r
+                f_box(boxes, d)
+        for d in supD
+            if d.rank == r
+                f_box(boxes, d)
+    float tol = groupAtr * atrC
+    array<Grp> resG = f_groups(resD, tol)
+    array<Grp> supG = f_groups(supD, tol)
+    string act = buy ? "Buy" : "Sell"
+    string wSide = buy ? "แนวรับ" : "แนวต้าน"
+    string kSide = buy ? "แนวต้าน" : "แนวรับ"
+    string wCol = buy ? "เขียว" : "แดง"
+    string xCol = buy ? "แดง" : "เขียว"
+    string kBey = buy ? "เหนือ" : "ใต้"
+    string wBey = buy ? "ใต้" : "เหนือ"
+    string kArr = buy ? "▲" : "▼"
+    string wArr = buy ? "▼" : "▲"
+    string goW = buy ? "ขึ้น" : "ลง"
+    string goX = buy ? "ลง" : "ขึ้น"
+    string wWick = buy ? "ไส้ล่าง" : "ไส้บน"
+    string rWick = buy ? "ไส้บน" : "ไส้ล่าง"
+    string trWord = buy ? "ขาขึ้น" : "ขาลง"
+    array<Grp> wG = buy ? supG : resG
+    array<Grp> kG = buy ? resG : supG
+    bool wRes = not buy
+    bool kRes = buy
+    [w1, w2, wp] = f_pick(wG, wRes, close)
+    [k1, k2, kp] = f_pick(kG, kRes, close)
+    string tagKe = trendOn ? kArr + " ปิด" + kBey + " = หา " + act : ""
+    string tagKf = trendOn ? kArr + " ปิด" + kBey + " = " + goW + "ต่อ" : ""
+    string tagW = trendOn ? (useRej ? "ชนแล้วปิด" + wCol + " = หา " + act + "\n" : "") + wArr + " ปิด" + wBey + " = " + goX + "ต่อ" : ""
+    if resD.size() == 0
+        f_empty(labels, true)
+    else
+        f_labels(labels, resG, true, buy ? k1 : w1, buy ? tagKe : tagW, buy ? tagKf : tagW, trendOn ? (buy ? kp : wp) : -1)
+    if supD.size() == 0
+        f_empty(labels, false)
+    else
+        f_labels(labels, supG, false, buy ? w1 : k1, buy ? tagW : tagKe, buy ? tagW : tagKf, trendOn ? (buy ? wp : kp) : -1)
+    if showPanel
+        color fg = chart.fg_color
+        color sub = color.new(chart.fg_color, 25)
+        color tint = color.new(C_GRAY, 88)
+        color nob = color(na)
+        string AL = text.align_left
+        string AC = text.align_center
+        bool forming = hasR and (oR == 1 or not barstate.isconfirmed)
+        string hhmm = str.format_time(tcR, "HH:mm", tzUse)
+        int nowMs = barstate.isrealtime ? timenow : time_close
+        float fracR = na(toR) or na(tcR) or tcR <= toR ? na : math.max(0.0, math.min(1.0, (nowMs - toR) * 1.0 / (tcR - toR)))
+        int third = na(fracR) ? 0 : fracR < 1.0 / 3 ? 1 : fracR < 2.0 / 3 ? 2 : 3
+        string thirdW = third == 1 ? "ต้นแท่ง" : third == 2 ? "กลางแท่ง" : third == 3 ? "ปลายแท่ง" : ""
+        int minAll = int(math.round(secR / 60.0))
+        int minEl = na(fracR) ? 0 : int(math.floor(fracR * minAll))
+        string sesW = f_ses(hour(nowMs, "Asia/Bangkok"))
+        string clk = showClock and hasR ? " · " + sesW + (forming and third > 0 ? " · นาทีที่ " + str.tostring(minEl) + "/" + str.tostring(minAll) + " (" + thirdW + ")" : "") : ""
+        string clkTip = showClock and hasR ? "\n\nช่วงตลาดตอนนี้: " + sesW + " · ครูบอกว่าควรดูช่วงที่ตลาดเปิด ตี 2 ถึงตี 3 volume ไม่พอ · ท่าเทรด (ช่วงเวลาที่ตลาดมี volume)\nนาทีของแท่ง " + nR + ": เข้า Impulse Entry ช่วงกลางแท่ง · ต้นแท่งเร็วไป ราคายังมีเวลาย่อกลับมาทิ้งไส้ · ปลายแท่งเวลาเหลือน้อย แท่งจะเล็ก · ท่าเทรด §21" : ""
+        int wh =forming and trendOn ? f_hit(wG, wRes, dO, dH, dL) : -1
+        int kh = forming and trendOn ? f_hit(kG, kRes, dO, dH, dL) : -1
+        [w1N, w1F, w1Nm, w1T, w1E] = f_g(wG, w1, wRes)
+        [w2N, w2F, w2Nm, w2T, w2E] = f_g(wG, w2, wRes)
+        [k1N, k1F, k1Nm, k1T, k1E] = f_g(kG, k1, kRes)
+        [whN, whF, whNm, whT, whE] = f_g(wG, wh, wRes)
+        [khN, khF, khNm, khT, khE] = f_g(kG, kh, kRes)
+        bool pIsW = wp >= 0
+        [pN, pF, pNm, pT, pE] = f_g(pIsW ? wG : kG, pIsW ? wp : kp, pIsW ? wRes : kRes)
+        bool hasP = wp >= 0 or kp >= 0
+        bool pRes = pIsW ? wRes : kRes
+        float ownK = buy ? ownRT[hR] : ownSB[hR]
+        int ph = 13
+        if not hasR
+            ph := 1
+        else if tSt == 2
+            ph := 3
+        else if not trendOn
+            ph := 2
+        else if wh >= 0
+            ph := 4
+        else if rejAct
+            ph := 6
+        else if kh >= 0
+            ph := 5
+        else if evCode == 1
+            ph := 7
+        else if evCode == 2
+            ph := 8
+        else if evCode == 5
+            ph := 9
+        else if evCode == 6
+            ph := 10
+        else if evCode == 4
+            ph := 11
+        else if evCode == 14
+            ph := 14
+        else if evCode == 15
+            ph := 15
+        else if evCode == 16
+            ph := 16
+        else if hasP
+            ph := 12
+        string ln1 = ""
+        string ln2 = ""
+        string phTip = ""
+        color phBg = tint
+        color phFg = fg
+        string dots = ""
+        string tr0 = "● เทรนด์ " + nT + " " + trWord
+        array<string> rl = array.new<string>()
+        array<string> rr = array.new<string>()
+        array<string> rt = array.new<string>()
+        string listE = (onE1 ? nE1 : "") + (onE1 and onE2 ? " · " : "") + (onE2 ? nE2 : "")
+        if ph == 1
+            ln1 := "กราฟนี้ใช้ดูทิศ"
+            ln2 := "ย่อไปดู " + listE + " เพื่อหาจุดเข้า"
+            phTip := "TF ใหญ่ใช้หาทิศ · TF เล็กใช้หาจุดเข้า · MTF §3\n1 ชั่วโมงกับ 30 นาที ดูเพื่อหาจุดเข้าและโซนการเล่น · MTF §5"
+            dots := (trendOn ? tr0 : "○ เทรนด์ " + nT) + "   ○ ราคาถึงแนว   ○ แท่ง confirm"
+        else if ph == 2
+            ln1 := "ยังอ่านเทรนด์ " + nT + " ไม่ได้"
+            ln2 := "รอราคาทำยอดและก้นก่อน"
+            phTip := "ต้องรอดูโครงสร้างก่อน · Trend §4"
+            dots := "○ เทรนด์ " + nT + "   ○ ราคาถึงแนว   ○ แท่ง confirm"
+        else if ph == 3
+            ln1 := nT + " เป็น Sideway · Set Zero"
+            ln2 := "ยังไม่หาจุดเข้า · รอหลุดกรอบ"
+            phTip := "Sideway = Set Zero พักตัวสะสมแรง · หลุดขึ้น = ขาขึ้น · หลุดลง = ขาลง · Trend §14\nจุดยากคือ Sideway · Trend §3"
+            dots := "○ เทรนด์ " + nT + "   ○ ราคาถึงแนว   ○ แท่ง confirm"
+            rl.push("รอ ▲ แท่ง " + nT + " ปิดเหนือ " + f_px(tUp))
+            rr.push("เป็นขาขึ้น · หา Buy")
+            rt.push("Sideway หลุดขึ้น = ไปเทรนด์ขึ้น · Trend §14\nหลุดขึ้นแล้วต้องดูซ้ายมือด้วยว่าติดไหม · Trend §15")
+            rl.push("รอ ▼ แท่ง " + nT + " ปิดใต้ " + f_px(tDn))
+            rr.push("เป็นขาลง · หา Sell")
+            rt.push("Sideway หลุดลง = ไปเทรนด์ลง · Trend §14")
+        else if ph == 4
+            ln1 := "กำลังชน" + wSide + " " + whNm + " · แตะมาแล้ว " + str.tostring(whT) + " ครั้ง"
+            ln2 := "อย่าเพิ่งทำอะไร · รอแท่ง " + nR + " ปิด " + hhmm
+            phTip := "ไม่ควรเล่นในโซน · S/R §9\nรอดูว่าแท่งปิดตรงไหน · S/R §3\nยิ่งแตะหลายครั้งยิ่งห้ามเล่นเด้ง · S/R §12"
+            phBg := C_AMB
+            phFg := C_INK
+            dots := tr0 + "   ● ชน" + wSide + " " + whNm + "   ○ แท่งปิด" + wCol + " (Rejection)"
+            rl.push("ปิด" + wCol + " มี" + wWick + "ยาว")
+            rr.push("Rejection · มีโอกาส" + goW)
+            rt.push("ชนแนวแล้วโดนตบกลับ ปิดเป็นแท่ง" + wCol + " = มีโอกาส" + goW + " เล่นได้ · รอแท่งปิดก่อน · confirm §8\nRejection อย่างเดียวไม่ค่อยชัวร์ · confirm §9")
+            rl.push("ปิด" + xCol)
+            rr.push("ยังไม่ใช่ · รอแท่งต่อไป")
+            rt.push("ปิดเป็นแท่ง" + xCol + " = ยังไม่ควรเข้า · confirm §8")
+            rl.push("เนื้อปิด" + wBey + " " + f_px(whF))
+            rr.push("มีโอกาส" + goX + "ต่อ" + (na(w2N) ? "" : " · แนวถัดไป " + f_px(w2N)))
+            rt.push("ปิดทะลุ = มีโอกาสไปต่อ · S/R §3\nสวนเทรนด์ " + nT + " · มี bias ได้แต่ไม่ต้องกอด bias · MTF §9")
+        else if ph == 5
+            ln1 := "กำลังชน" + kSide + " " + khNm + " · แตะมาแล้ว " + str.tostring(khT) + " ครั้ง"
+            ln2 := "อย่าเพิ่งทำอะไร · รอแท่ง " + nR + " ปิด " + hhmm
+            phTip := "ไม่ควรเล่นในโซน · S/R §9\nรอดูว่าแท่งปิดตรงไหน · S/R §3\nยิ่งเป็นโซนของ TF ใหญ่ ยิ่งต้องสะสมแรงเยอะถึงจะเบรก · MTF §1"
+            phBg := C_AMB
+            phFg := C_INK
+            dots := tr0 + "   ● ถึง" + kSide + " " + khNm + "   ○ เนื้อปิด" + kBey + "แนว"
+            rl.push("เนื้อปิด" + kBey + " " + f_px(khE and not na(ownK) ? ownK : khF))
+            rr.push(khE ? "หาจุด " + act + " · ต้องผ่านเช็ก" : "มีโอกาส" + goW + "ต่อ · รอแท่ง " + khNm + " ปิดด้วย")
+            rt.push("เนื้อปิดเลยไส้ทั้งหมด = มีโอกาสไปต่อ · S/R §3, §11\nป้ายจุดเข้าขึ้นเมื่อแท่ง " + listE + " ปิดทะลุโซนของ TF ตัวเอง และผ่านเช็ก")
+            rl.push("ไส้ทิ่มแล้วปิดกลับ" + wBey + " " + f_px(khN))
+            rr.push((buy ? "มีแรงขาย" : "มีแรงรับ") + " · ยังไม่ " + act)
+            rt.push("ไส้ทิ่มเข้าโซนแล้วกระตุกกลับ = มีแนวโน้มกลับตัว · S/R §11\nถ้าไม่ทะลุ โอกาสเด้งสูงกว่า · S/R §3")
+        else if ph == 6
+            string zTxt = wSide + " " + evZ
+            bool lab = evCode == 3 and useRej
+            bool ieOk = evIE and not evOver and evCode == 3
+            ln1 := evCode == 7 ? "Rejection แต่ปิดไม่มี" + rWick + " = 50/50" : evCode == 8 ? "Rejection ที่" + zTxt + " แต่ติดโซน" : evOver ? "เด้งเกิน 50% ของแท่ง Rejection" : ieOk ? (buy ? "ทะลุ high" : "หลุด low") + " แท่ง Rejection แล้ว" : lab ? "มีจุดเข้า " + act + " · Rejection ที่" + zTxt : "Rejection ที่" + zTxt
+            ln2 := evCode == 7 ? "รอแท่งถัดไปที่มีไส้" : evCode == 8 ? "ระยะถึง" + kSide + "ถัดไปสั้น · ยังไม่เข้า" : evOver ? "Rejection อ่อนลง · ยังไม่เข้า" : ieOk ? "= Impulse Entry · confirm เสริม" : "ยังไม่ชัวร์มาก · รอ confirm เพิ่ม"
+            phTip := "Rejection = ชนแนวแล้วโดนตบกลับ ทิ้งไส้ · ปิด" + wCol + " = มีโอกาส" + goW + " · confirm §8\nRejection อย่างเดียวไม่ค่อยชัวร์ · confirm §9\nไม่มี Range = 50/50 หักล้างทุก confirm · แท่งเทียน §3\nติดโซน = ยังเข้าไม่ได้ · MTF §9\nเรื่องด้านล่างดูที่แท่งถัดไปแท่งเดียว"
+            bool solid = evCode == 3 and not evOver and (ieOk or lab)
+            phBg := solid ? (buy ? C_UP : C_DN) : C_AMB
+            phFg := solid ? color.white : C_INK
+            dots := tr0 + "   ● " + zTxt + "   ● Rejection   " + (ieOk ? "● Impulse Entry" : "○ confirm เพิ่ม")
+            if evCode == 7
+                rl.push("รอแท่งถัดไปที่มี" + rWick)
+                rr.push("แท่งนี้ 50/50 · ยังไม่เข้า")
+                rt.push("แท่งปิดสุดปลาย ไม่มีไส้ฝั่งปิด = แท่งต่อไป 50/50 · หักล้างทุก confirm · รอแท่งถัดไปที่มี Range · แท่งเทียน §3")
+            if evCode == 3
+                float rngF = math.max(dH - dL, syminfo.mintick)
+                bool oppOk = buy ? dO - dL > tailPct / 100 * rngF : dH - dO > tailPct / 100 * rngF
+                string ieAdd = forming and third > 0 ? "\n" + (oppOk ? "● ทำ" + wWick + "แล้ว" : "○ รอทำ" + wWick + "ก่อน") + "   " + (third == 2 ? "● กลางแท่ง" : "○ " + thirdW) : ""
+                rl.push((buy ? "ทะลุ " + f_px(evHi) + " (high" : "หลุด " + f_px(evLo) + " (low") + " แท่ง Rejection)")
+                rr.push("Impulse Entry · ไม่ต้องรอแท่งปิด" + ieAdd)
+                rt.push("แท่งถัดไปวิ่งเลยปลายแท่งก่อนหน้า = Impulse Entry · เข้าได้ไม่ต้องรอแท่งปิด เพราะมีแท่ง reject เป็น confirm มาก่อน · confirm §12\nตัวอย่างฝั่งลง: ทะลุ low แท่งก่อนหน้า · MTF §2\nImpulse Entry ต้องบริหารความเสี่ยงมากหน่อย · MTF §7\nเวลาเข้า IE: แบ่งแท่งเป็น 3 ส่วน เข้าช่วงกลาง · 1 ชั่วโมง = นาทีที่ 20–40 · 30 นาที = นาทีที่ 10–20 · ท่าเทรด §21\nให้ทำไส้อีกฝั่งก่อน เพราะแท่งเทียนแท่งหนึ่งมีทั้งไส้บนและไส้ล่าง · ท่าเทรด §22\n🤖 \"ทำไส้แล้ว\" = ไส้ฝั่งนั้นของแท่งที่กำลังวิ่งยาวเกินค่า \"ไม่มีไส้\" ในกลุ่ม 🤖")
+            if evCode != 7 and not na(k1F)
+                rl.push("เนื้อปิด" + kBey + kSide + " " + f_px(k1F))
+                rr.push("ทำลายโครงสร้าง · confirm ทันที")
+                rt.push("Rejection + ทำลายโครงสร้าง = เปลี่ยนเทรนด์ · confirm ได้ทันที · confirm §9")
+            if evCode != 7
+                rl.push("เด้งไม่ควรเกิน " + f_px(evMid))
+                rr.push(halfTxt)
+                rt.push("แท่งถัดไปถ้าเด้ง ไม่ควรเกิน 50% ของแท่ง rejection · confirm §8\n🤖 คลาสยังไม่ได้บอกว่านับตอนไส้แตะหรือตอนปิด · สคริปต์นับตอนไส้แตะ · เลือกวัดจากทั้งแท่งหรือเนื้อได้ในกลุ่ม 🤖")
+        else if ph == 7
+            ln1 := "มีจุดเข้า " + act + " " + evWho + " ที่ " + f_px(evPx)
+            ln2 := evAge == 0 ? "แท่งล่าสุด" : "เมื่อ " + str.tostring(evAge) + " แท่งก่อน"
+            phTip := lastTip
+            phBg := buy ? C_UP : C_DN
+            phFg := color.white
+            dots := evIsBrk ? tr0 + "   ● Breakout " + evStar + " · ทะลุ" + kSide + " " + evWho + "   ● ผ่านเช็ก " + str.tostring(evPass) + "/" + str.tostring(nChk) + (evEng ? "   ● กลืนกิน" : "") : tr0 + "   ● " + evKind + " " + evWho
+            if not na(k1N)
+                rl.push(goW + "ถึง" + kSide + " " + f_px(k1N) + " (" + k1Nm + ")")
+                rr.push("ด่านถัดไป · รอดูแท่งปิด")
+                rt.push("เป้าแรกคือแนวถัดไป ซึ่งอาจเด้งได้ · Trend §21\nจะไปต่อต้องหลุดแนวนั้นด้วยเนื้อเทียน · Trend §21")
+            else
+                rl.push("ซ้ายมือไม่มี" + kSide + "ถัดไป")
+                rr.push("ไปถึงไหนไม่รู้")
+                rt.push("ซ้ายมือไม่มีโซน = ไม่รู้ว่าถึงไหน · MTF §4")
+            if not na(w1F)
+                rl.push("ถ้าเนื้อปิดกลับ" + wBey + " " + f_px(w1F))
+                rr.push("สวนเทรนด์ · กลับไปดู " + nT)
+                rt.push("มี bias ได้ แต่ไม่ต้องกอด bias · MTF §9\nบางทีกราฟก็หลอก · Trend §19")
+        else if ph == 8
+            ln1 := "ทะลุ" + kSide + " " + evWho + " แต่ยังไม่เข้า"
+            ln2 := "ป้ายจะไม่ขึ้นที่แนวนี้แล้ว"
+            phTip := "แท่งปิดทะลุโซนแล้ว แต่ไม่ผ่านเช็ก · โซนนั้นถูกลบไปแล้ว จึงไม่มีป้ายตามมา\nหาโซนเล่นได้แต่ไม่มีให้เข้า = ปกติ · MTF §11\nส่วนใหญ่สิ่งที่ทำคือรอ · MTF §9"
+            dots := tr0 + "   ● ทะลุ" + kSide + " " + evWho + "   ○ ผ่านเช็ก"
+            if evL1 != ""
+                rl.push(evL1)
+                rr.push(evR1)
+                rt.push("แท่งยาวไป = ใช้ระยะหมด · ยิ่งไกลโซนยิ่งมีโอกาสกลับตัว · confirm §4, §7\nไม่มี Range = 50/50 รอแท่งถัดไปที่มี Range · แท่งเทียน §3\nขึ้นมาหลายแท่งติด ต้องรอพักตัว · MTF §5\nติดโซน = ยังเข้าไม่ได้ · MTF §9\nปิดเลยไส้ซ้ายมือไม่ได้ = volume ไม่จริง · MTF §6")
+            if evL2 != ""
+                rl.push(evL2)
+                rr.push(evR2)
+                rt.push("ราคาไปไกลแล้ว ไม่ต้องไล่ เดี๋ยวก็กลับมา · S/R §10")
+            if evL3 != ""
+                rl.push(evL3)
+                rr.push(evR3)
+                rt.push("ยังไม่รู้ก็ฝากไว้ก่อน · MTF §10")
+        else if ph == 9
+            ln1 := "เนื้อปิด" + wBey + wSide + " " + evZ
+            ln2 := "สวนเทรนด์ · อย่ากอด bias กลับไปดู " + nT
+            phTip := "มี bias ได้ แต่ไม่ต้องกอด bias · ราคาขึ้นสวนแรง ให้กลับไปดู TF ใหญ่ว่าเกิดอะไรขึ้น · MTF §9\nเทรนด์ " + nT + " ยังไม่เปลี่ยนจนกว่าแท่ง " + nT + " จะปิดเลยเส้นในแถวที่ 2"
+            dots := tr0 + "   ○ ราคาถึงแนว   ○ แท่ง confirm"
+            if not na(w1N)
+                rl.push(wSide + "ถัดไป " + f_px(w1N) + " (" + w1Nm + ")")
+                rr.push("ด่านถัดไปถ้า" + goX + "ต่อ")
+                rt.push("ราคาน่าจะไปถึงแนวถัดไปก่อนจะกลับตัวหรือไปต่อ · S/R คลิปวันที่ 7 นาที 51")
+        else if ph == 10
+            ln1 := "ไส้ทิ่ม" + kSide + " " + evZ + " แล้วปิดกลับ"
+            ln2 := (buy ? "มีแรงขาย มีโอกาสย่อ" : "มีแรงรับ มีโอกาสเด้ง") + " · ยังไม่ " + act
+            phTip := "ไส้ทิ่มเข้าโซนแล้วเนื้อปิดกลับ = มีแนวโน้มกลับตัว · S/R §11\nถ้าไม่ทะลุ โอกาสเด้งสูงกว่า · S/R §3"
+            dots := tr0 + "   ● ถึง" + kSide + " " + evZ + "   ○ เนื้อปิด" + kBey + "แนว"
+        else if ph == 11
+            ln1 := "ชน" + wSide + " " + evZ + " แล้วปิดกลับ"
+            ln2 := (evWrong ? "ปิด" + xCol : wWick + "ไม่ยาวพอ") + " = ยังไม่ใช่ Rejection"
+            phTip := "ชนแนวแล้วปิดเป็นแท่ง" + xCol + " = ยังไม่ควรเข้า · confirm §8\n🤖 รูปทรงไส้ (ยาวกว่าเนื้อและไส้อีกฝั่ง) เป็นของที่ AI ใส่เอง"
+            dots := tr0 + "   ● ชน" + wSide + " " + evZ + "   ○ แท่งปิด" + wCol + " (Rejection)"
+        else if ph == 12
+            ln1 := "ราคาเลย" + (pRes ? "แนวต้าน" : "แนวรับ") + " " + pNm + " ไปแล้ว"
+            ln2 := "รอแท่ง " + pNm + " ปิด จึงนับว่าทะลุ"
+            phTip := "ทะลุดูที่เนื้อเทียนของ TF นั้น · ไส้หลุดไม่นับ · Trend §18\nยิ่งเป็นโซนของ TF ใหญ่ ยิ่งสำคัญ · MTF §1"
+            phBg := C_AMB
+            phFg := C_INK
+            dots := tr0 + "   ○ ราคาถึงแนว   ○ แท่ง confirm"
+        else if ph == 14
+            ln1 := "Fakeout · แท่ง " + evWho + " ปิดกลับเข้าแนว " + evZ
+            ln2 := "ป้าย Breakout ก่อนหน้ายังไม่เป็นจริง · อย่ารีบสวน"
+            phTip := "เบรกออกไปแล้วกลับเข้ามาปิดในโซนเดิม = Fakeout · ท่าเทรด §7\nครูไม่ค่อยเล่น Fakeout และบอกว่าอย่าเล่นตอนราคาวิ่งเป็นเทรนด์ เพราะราคากลับไปตามเทรนด์ต่อได้ · ท่าเทรด §8–§9\nทดสอบทองคำ 1H 2.4 ปี: ป้าย Breakout 61% โดนปิดกลับเข้าแนวภายใน 6 แท่ง แต่หลังจากนั้น 4 แท่งราคายังไปตามเทรนด์เฉลี่ย +0.14 ATR (8 แท่ง +0.29)"
+            phBg := C_AMB
+            phFg := C_INK
+            dots := tr0 + "   ○ ราคาถึงแนว   ○ แท่ง confirm"
+        else if ph == 15
+            ln1 := "Retest ด้วยเนื้อ " + evWho + " ที่แนวเดิม " + evZ
+            ln2 := (buy ? "ต้านเปลี่ยนเป็นรับ" : "รับเปลี่ยนเป็นต้าน") + " · ครูรอเบรกอีกทีค่อยเข้า"
+            phTip := "เบรกไปก่อน แล้วย่อกลับมาที่แนวเดิม แล้วเกิดแท่งตามเทรนด์ = " + (buy ? "แนวต้านเปลี่ยนเป็นแนวรับ" : "แนวรับเปลี่ยนเป็นแนวต้าน") + " แปลว่าโซนนี้มีนัยยะสำคัญสูงมาก · ท่าเทรด §4\nครูยังไม่เข้าตรงนี้เพราะมักติดแนวของยอดแท่งเบรก · รอเบรกแนวนั้นอีกทีค่อยเข้า\nทดสอบทองคำ 1H 2.4 ปี ตามเทรนด์ 4H (151 ครั้ง): 4 แท่งถัดไปเฉลี่ย +0.09 ATR · 8 แท่ง +0.24 ATR · ไปถูกทาง 57%"
+            dots := tr0 + "   ● Retest ที่แนวเดิม   ○ เบรกแนวถัดไป"
+        else if ph == 16
+            ln1 := "Follow Trend · " + evWho + " ย่อ " + str.tostring(evTouch) + " แท่งแล้วเกิดแท่ง" + trWord
+            ln2 := "ครู: มีโอกาส 80% ไป retest " + (buy ? "high" : "low") + " เดิม " + evZ
+            phTip := "ขาขึ้น ทำแนวต้าน ย่อ แล้วทำแนวรับ มีโอกาส 80% กลับไป retest high เดิม · ขาลงกลับกัน · ท่าเทรด §10 · Trend §5\nแท่งที่กลับตัวควรใหญ่กว่าแท่งก่อนหน้า · ท่าเทรด §11\nกำลังย่ออยู่ยังเข้าไม่ได้ ต้องรอแท่งตามเทรนด์ปิดก่อน · ท่าเทรด §12\nRR ไม่ถึง 1 ต่อ 1 ครูไม่แนะนำ · ท่าเทรด §11\nทดสอบทองคำ 1H 2.4 ปี (469 ครั้ง · ราว 3.8 ครั้ง/สัปดาห์): 4 แท่งถัดไปเฉลี่ย +0.06 ATR · 8 แท่ง +0.22 ATR · ไปถูกทาง 50% = ได้เปรียบน้อย · จึงไม่ขึ้นป้ายบนกราฟถ้าไม่เปิดใน Settings"
+            dots := tr0 + "   ● ย่อแล้วเกิดแท่ง" + trWord + "   ● ใหญ่กว่าแท่งก่อนหน้า"
+        else
+            ln1 := "ระหว่างแนว · รอราคาถึงแนว"
+            int runX = buy ? runD : runU
+            int runW = buy ? runU : runD
+            ln2 := runX >= 2 ? nR + " " + goX + "ติดกัน " + str.tostring(runX) + " แท่ง (ย่อสวนเทรนด์)" : runW >= upBars ? goW + "ติดกัน " + str.tostring(runW) + " แท่ง · ยังไม่พักตัว" : "ส่วนใหญ่คือการรอ"
+            phTip := "1 ชั่วโมงกับ 30 นาที ดูเพื่อหาจุดเข้าและโซนการเล่น · MTF §5\nส่วนใหญ่สิ่งที่ทำคือรอ · MTF §9\nจังหวะย่อสวนเทรนด์ ห้ามทะลุแนวปัจจุบันของ " + nT + " · Trend §18, §21"
+            dots := tr0 + "   ○ ราคาถึงแนว   ○ แท่ง confirm"
+        if ph >= 9
+            if not na(ownK)
+                float nx = na
+                string nxN = ""
+                if kG.size() > 0
+                    for i = 0 to kG.size() - 1
+                        Grp g = kG.get(i)
+                        float e = kRes ? g.bot : g.top
+                        if (kRes ? e > ownK + syminfo.mintick : e < ownK - syminfo.mintick) and (na(nx) or math.abs(e - ownK) < math.abs(nx - ownK))
+                            nx := e
+                            nxN := g.tfs
+                bool tight = not na(nx) and not na(atrR) and math.abs(nx - ownK) / atrR < roomAtr
+                rl.push("รอ " + kArr + " แท่ง " + nR + " ปิด" + kBey + " " + f_px(ownK))
+                rr.push("หาจุด " + act + " · ต้องผ่านเช็ก" + (tight ? "\nเลยไปติด" + kSide + " " + nxN : ""))
+                rt.push("จุดเข้า = แท่ง " + nR + " ปิดทะลุโซนของตัวเอง ไปทางเดียวกับเทรนด์ " + nT + " · S/R §3 · MTF §5\nต้องผ่านเช็ก: แท่งไม่ยาวเกิน ไม่ปิดปริ่มแนว + อย่างน้อย " + str.tostring(needPass) + " จาก " + str.tostring(nChk) + " ข้อ" + (tight ? "\nแนวถัดไป " + nxN + " " + f_px(nx) + " อยู่ใกล้ = ติดโซน ระยะการเล่นเหลือน้อย · MTF §9" : ""))
+            else if not na(k1F)
+                rl.push("ถ้า " + kArr + " เนื้อปิด" + kBey + " " + f_px(k1F) + " (" + k1Nm + ")")
+                rr.push("มีโอกาส" + goW + "ต่อ")
+                rt.push("ปิดทะลุ = มีโอกาสไปต่อ · S/R §3\nตอนนี้ยังไม่มีโซนของ " + nR + " ฝั่งนี้ จึงยังไม่มีป้ายจุดเข้าแบบทะลุ")
+            else
+                rl.push("ยังไม่มี" + kSide + "ทางซ้ายมือ")
+                rr.push("รอราคากลับตัวทำแนวใหม่")
+                rt.push("ราคากลับตัวเมื่อไหร่ก็เกิดแนวทันที · S/R คลิปวันที่ 7 นาที 50")
+            if ph != 9 and not na(w1N)
+                rl.push("รอ " + wArr + " ชน" + wSide + " " + f_px(w1N) + " แล้วปิด" + wCol)
+                rr.push("Rejection · มีโอกาส" + goW)
+                rt.push("ชนแนวแล้วโดนตบกลับ ปิดเป็นแท่ง" + wCol + " = มีโอกาส" + goW + " · รอแท่งปิดก่อน · confirm §8\nปิดเป็นแท่ง" + xCol + " = ยังไม่ควรเข้า · confirm §8")
+            if hasP
+                rl.push("รอแท่ง " + pNm + " ปิด" + (pRes ? "เหนือ " : "ใต้ ") + f_px(pF))
+                rr.push("จึงนับว่าทะลุ" + (pRes ? "แนวต้าน" : "แนวรับ"))
+                rt.push("ทะลุดูที่เนื้อเทียนของ TF นั้น · Trend §18")
+            else if ph != 9 and not na(w1F)
+                rl.push("ถ้า " + wArr + " เนื้อปิด" + wBey + " " + f_px(w1F))
+                rr.push("มีโอกาส" + goX + "ต่อ · กลับไปดู " + nT)
+                rt.push("ปิดทะลุ = มีโอกาสไปต่อ · S/R §3\nมี bias ได้ แต่ไม่ต้องกอด bias · MTF §9")
+        color cT = tSt == 1 ? C_UP : tSt == -1 ? C_DN : C_SIDE
+        string chip = tSt == 1 ? "ขาขึ้น · หา Buy" : tSt == -1 ? "ขาลง · หา Sell" : tSt == 2 ? "Sideway · รอ" : "ยังอ่านไม่ได้"
+        string trTip = "เทรนด์ " + nT + " · TF ใหญ่หาทิศ · MTF §3\nขาขึ้น = ทะลุยอดเดิม และย่อไม่ปิดหลุดแนวรับล่าสุด · Trend §16–18\nขาลง = กลับด้านกัน · Trend §21\nทะลุดูที่เนื้อเทียน ไส้หลุดไม่นับ · Trend §18\nชนยอดเดิมไม่ผ่าน " + str.tostring(sideN) + " รอบ = Sideway · Trend §6" + (trendOn ? "\nตอนนี้ชนแล้ว " + str.tostring(tTouch) + " รอบ" : "") + "\nเห็นทิศแล้วไม่ได้แปลว่าต้องหาฝั่งนั้นตลอด · มี bias ได้ แต่ไม่ต้องกอด bias · MTF §9"
+        string gK = tSt == 1 ? "เปลี่ยนเป็นขาลง ถ้าปิดใต้" : tSt == -1 ? "เปลี่ยนเป็นขาขึ้น ถ้าปิดเหนือ" : tSt == 2 ? "กรอบ Sideway" : "รอโครงสร้าง"
+        string gV = tSt == 1 ? f_px(tDn) : tSt == -1 ? f_px(tUp) : tSt == 2 ? f_px(tDn) + " – " + f_px(tUp) : "-"
+        string gTip = tSt == 1 ? "แนวรับล่าสุดของ " + nT + " (ก้นของการย่อครั้งล่าสุด)\nแท่ง " + nT + " ปิดใต้เส้นนี้ = เปลี่ยนมุมมองเป็นขาลงทันที · Trend §19\nยอดเดิม (ด่านแรก) " + f_px(tUp) + " · Trend §6" : tSt == -1 ? "แนวต้านล่าสุดของ " + nT + " (ยอดของการเด้งครั้งล่าสุด)\nแท่ง " + nT + " ปิดเหนือเส้นนี้ = เปลี่ยนมุมมองเป็นขาขึ้น · Trend §21\nก้นเดิม " + f_px(tDn) : tSt == 2 ? "Sideway = พักตัว สะสมแรง · Set Zero\nหลุดขึ้น = ขาขึ้น · หลุดลง = ขาลง · Trend §14" : "รอให้ราคาทำยอดและก้นก่อน"
+        string dotTip = "● = confirm ที่มีแล้ว · ○ = ยังรอ\nคลาส: ต้องมี confirm ประมาณ 3–4 อย่าง ใช้แทนกันได้ · confirm §13\nคลาสยังไม่ได้บอกว่าเช็กลิสต์มีข้ออะไรบ้าง\n🤖 รายการนี้ AI เลือกจากสิ่งที่โน้ตเรียกว่า confirm: เทรนด์ TF ใหญ่ · แนวรับแนวต้าน · แท่ง confirm / Rejection / Impulse Entry / กลืนกิน\nตารางไม่ตัดสินว่าครบหรือไม่ครบ"
+        bool stale = lastDir != 0 and trendOn and lastDir != tSt
+        table.clear(tb, 0, 0, 1, 8)
+        f_cell(tb, 0, 0, "เทรนด์ " + nT, fg, fs, AL, nob, false, trTip)
+        f_cell(tb, 1, 0, chip, color.white, fs, AC, cT, true, trTip)
+        f_cell(tb, 0, 1, gK, sub, fs - 1, AL, nob, false, gTip)
+        f_cell(tb, 1, 1, gV, fg, fs, AC, nob, true, gTip)
+        if useOm
+            [omTxt, omOk, omBad] = f_omRead(tSt, omS, omD)
+            string omSub = trendOn ? f_omSum(omOk, omBad) + (omChk and omOk == 2 ? " · ได้ 1 ข้อ" : "") : "ทองยังไม่มีทิศให้เทียบ"
+            color omFg = omBad > 0 ? C_AMB : omOk == 2 ? fg : sub
+            string omTip = "เทรนด์ " + nT + " ของ Silver (" + symS + ") และ DXY (" + symD + ")\nสคริปต์ดึงมาอ่านเอง ไม่ต้องเปิดกราฟเพิ่ม · อ่านด้วยวิธีเดียวกับทอง · Trend §16–21\n✓ = สอดคล้องกับเทรนด์ทอง (Silver ไปทางเดียวกัน · DXY สวนทาง)\n✗ = ขัดกับเทรนด์ทอง\nไม่มีเครื่องหมาย = Sideway หรือยังอ่านไม่ได้\nที่มา: คลิป Bills (นอกคลาส) ใช้ silver กับ DXY เป็น confluence ฝั่ง fundamental · Bills §13\nconfluence เดียวไม่ใช่ confirmation · Bills §13\n" + (omChk ? "สอดคล้อง 2/2 = นับเป็นเช็กข้อที่ 5 ของจุดเข้าแบบทะลุ · ปิดได้ใน Settings" : "ใช้ประกอบเท่านั้น · ไม่นับในเช็กจุดเข้า") + "\n🤖 ความสัมพันธ์ไม่คงที่ บางช่วงทองกับ DXY ขึ้นพร้อมกันได้\n" + OM_TEST
+            f_cell(tb, 0, 2, "ตลาดอื่น · " + nT, sub, fs - 1, AL, nob, false, omTip)
+            f_cell(tb, 1, 2, omTxt + "\n" + omSub, omFg, fs - 1, AC, nob, false, omTip)
+        f_cell(tb, 0, 3, "ตอนนี้ · " + nR + clk + "\n" + ln1 + "\n" + ln2, phFg, fs, AL, phBg, true, phTip + clkTip)
+        table.merge_cells(tb, 0, 3, 1, 3)
+        f_cell(tb, 0, 4, dots, sub, fs - 1, AL, nob, false, dotTip)
+        table.merge_cells(tb, 0, 4, 1, 4)
+        for i = 0 to 2
+            if i < rl.size()
+                f_cell(tb, 0, 5 + i, rl.get(i), fg, fs - 1, AL, nob, false, rt.get(i))
+                f_cell(tb, 1, 5 + i, rr.get(i), sub, fs - 1, AL, nob, false, rt.get(i))
+        f_cell(tb, 0, 8, "จุดเข้าล่าสุด", sub, fs - 1, AL, nob, false, lastTip)
+        f_cell(tb, 1, 8, lastTxt + (stale ? "\n(ก่อนเทรนด์เปลี่ยน)" : ""), stale ? color.new(chart.fg_color, 50) : fg, fs - 1, AL, nob, false, lastTip + (stale ? "\n\nจุดเข้านี้เกิดก่อนเทรนด์ " + nT + " เปลี่ยน · ทิศที่หาตอนนี้ดูจากแถวบนสุด" : ""))
+
+plot(r1b, "แนวต้าน TF 1", color = C_DN, display = display.data_window)
+plot(s1t, "แนวรับ TF 1", color = C_UP, display = display.data_window)
+plot(r2b, "แนวต้าน TF 2", color = C_DN, display = display.data_window)
+plot(s2t, "แนวรับ TF 2", color = C_UP, display = display.data_window)
+plot(r3b, "แนวต้าน TF 3", color = C_DN, display = display.data_window)
+plot(s3t, "แนวรับ TF 3", color = C_UP, display = display.data_window)
+plot(r4b, "แนวต้าน TF 4", color = C_DN, display = display.data_window)
+plot(s4t, "แนวรับ TF 4", color = C_UP, display = display.data_window)
+plot(tSt, "เทรนด์ 4H (1 ขึ้น · -1 ลง · 2 Sideway)", color = C_GRAY, display = display.data_window)
+plot(tDn, "เทรนด์ 4H: เส้นล่าง", color = C_UP, display = display.data_window)
+plot(tUp, "เทรนด์ 4H: เส้นบน", color = C_DN, display = display.data_window)
+plot(omS, "Silver เทรนด์ (1 ขึ้น · -1 ลง · 2 Sideway)", color = C_GRAY, display = display.data_window)
+plot(omD, "DXY เทรนด์ (1 ขึ้น · -1 ลง · 2 Sideway)", color = C_GRAY, display = display.data_window)
+plot(cntBrk, "จำนวนป้ายจุดเข้าแบบทะลุ", color = C_GRAY, display = display.data_window)
+plot(cntRej, "จำนวนป้ายจุดเข้าแบบ Rejection", color = C_GRAY, display = display.data_window)
+plot(cntRet, "จำนวนป้ายจุดเข้าแบบ Break & Retest", color = C_GRAY, display = display.data_window)
+plot(cntC3, "จำนวนป้ายจุดเข้าแบบ 3 แท่งมหาประลัย", color = C_GRAY, display = display.data_window)
+plot(cntTc, "จำนวนป้ายจุดเข้าแบบ Trend Change", color = C_GRAY, display = display.data_window)

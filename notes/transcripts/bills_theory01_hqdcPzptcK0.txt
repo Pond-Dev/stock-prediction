@@ -1,0 +1,896 @@
+# Trading House Online Theory session #1
+# คลิป: https://www.youtube.com/watch?v=hqdcPzptcK0 · ช่อง Bills · อัปโหลด 2026-11-09 · ยาว 1:52:16
+# ซับอัตโนมัติภาษาอังกฤษของ YouTube (ถอดเสียงผิดได้ · ภาพบนจอไม่อยู่ในซับ) · ดึงผ่าน Chrome เมื่อ 2026-11-15
+# ⚠️ ไม่ใช่คลาส TrackleTrade (ช่อง Gun) — เป็นแหล่งภายนอก · กราฟ XAUUSD M5/M15 · เนื้อหา: Fib (0:08–52:30) · EMA/SMA 200 (52:30–1:00:43) · Liquidity (1:01:42–1:14:26) · Breakout/Fakeout (1:14:26–1:25:56) · Lot/Pip/Leverage (1:25:56–1:31:37) · Trend line (1:31:37–1:34:34) · ที่เหลือ = โปรโมต/ถามตอบ
+
+[0:08] 500 waiting 600.
+[0:16] Are we live?
+[0:19] Okay, you guys can hear me. What's up? What's up? What's up?
+[0:30] We're live, guys.
+[0:35] [music]
+[0:38] You guys can hear me all good. I can't really hear. That's my
+[0:43] [music]
+[0:46] Yes. Yes. 100%. Yeah, we hear you. All right, let's go, guys. We have Goldie [laughter] with us today. I uh I didn't have time to do proper presentation
+[0:55] yesterday of Goldie, but guys, look at this. Look at this beauty. [laughter] Okay, guys. Goldie is going to be with us for
+[1:02] uh the next 21 days, okay? So, uh we'll be learning a lot in the next 21 days.
+[1:06] And I hope Goldie can be profitable at the end. And do you think I'll make 250K or no? Yeah, let's go. [laughter] Okay, you're hyping me up. Let's go, guys. W
+[1:15] Goldie in the chat, guys. First theory session is getting started.
+[1:20] I hope you guys are hyped. [music] So, as I tried to tell you guys on Telegram, uh it's going to be the only session that is going to be open to everyone just because we didn't have
+[1:29] time to put everyone in the uh in the group yet. A lot of technical problem and too many people joining. So, I don't want you guys to be left behind. So, we'll be live with all of you today.
+[1:39] Make your picture bigger bigger. You want to see Goldie? We'll go straight forward after. Look at this. Come on.
+[1:47] Come on, Goldie. Show us how it is. Dance. Get high, baby.
+[1:55] [music]
+[1:59] Goldie. [music] Oh, yeah. Goalie.
+[2:07] Come on. All right, let's get it. Let's start this live, [laughter] guys. Sorry. Got to do it, goalie.
+[2:14] [laughter]
+[2:16] Okay, so guys, uh 2,200 people joined us since yesterday. Okay. So, I want to say congrats. Congrats to everyone joining us. Goldie, if you want, you can take a
+[2:23] seat here so you can learn. I don't know if you'll be in the frame, but it's okay.
+[2:28] [laughter]
+[2:29] Can you
+[2:36] [laughter]
+[2:38] I don't think it's working anyway. Stay there. Okay. So, let's let's get started, guys. Okay. So, uh I want to say congrats to everyone who joined,
+[2:46] guys. 200 200 pe 2,200 people. If you didn't join yet guys, I would join because um the next slide that I have
+[2:54] for you guys, I'll just go through, okay, the next five to seven minutes guys, I'll just go through the question that you have and then we're on for Terry. Okay, so give me 5 minutes and
+[3:02] then uh we're on to Terry. Okay, so 2,200 people tomorrow, as I said in the group, I'm flying someone to Dubai to trade with me. Okay.
+[3:11] So, tomorrow uh one of you will be uh in me with sorry, one of you that joined the trading house online will be with me
+[3:18] over here and uh we'll just trade live in front of everyone. Okay, so uh let's go. Thank you so much for this
+[3:25] opportunity, bro. No problem, bro. 6:30 p.m. tomorrow. And guys, every day it's going to be the same schedule. Okay, I'll talk about it later. Uh and the
+[3:33] next one, it's a Rolex giveaway tomorrow. Okay, I decided not to do it today because today I want to do the the
+[3:40] flying someone over and tomorrow the Rolex. Okay, and the only thing you have to do to win the Rolex, guys, uh whether you're in the trading house online or you're or you're not is first of all to
+[3:48] to join the trading house online and then take a valid trade that will respect my checklist. Okay. So, tomorrow I'll go live at night and uh I I will
+[3:57] tell you guys I will check every trade that you guys took and see if it was respecting my checklist. You have a
+[4:04] chance to win. Okay? So, uh don't take any stupid trade. Please just take one that respect the plan and uh you might
+[4:11] win the Rolex. Okay. So, this is it. And this is today's win by the members of the trading house. Okay. So, uh some nice win. I I I didn't had enough space
+[4:19] to put a lot but uh yeah, some people here risk it 15 pips. That's a one to five R crazy buys Muhammad the power of the trading house show and the coaching
+[4:26] provided right sure great anyway a couple of uh of of profit for members today congrats yesterday's event was crazy this is just a recap from
+[4:34] yesterday and then I'll answer your question guys and then we're on to theory okay so recap from yesterday uh when you join the training house offer you have live training session three
+[4:43] times a day for 21 days you have the theory sessions which we're doing right now every day after New York and it's going to be at 10 p.m. every day. Okay.
+[4:50] Then you have double deposit uh for another $1,000. The private telegram group, you have Sunday mindset session.
+[4:57] Can't wait for Sunday, guys. And you have every session recorded. So if you miss one session like today, for example, you'll have it recorded. Okay, so easy. And then you have the training
+[5:05] house 21 bonanza. Okay, so every uh the calendar, sorry. And a seat in season 2.
+[5:11] Maybe you offer three seats and one year in my VIP group. Okay, so uh this is the recap from yesterday. If you want to join, yes, you can scan the QR code. uh
+[5:19] for the trading house and you'll be in with us. I'm pretty sure everyone on live already joined. But uh if you haven't joined yet the training house, you can just uh scan the QR code and
+[5:27] that's it. And by the way guys, the Rolex that I'll give away tomorrow is this one. Okay, so if you want to see it, I don't know if you can see properly. I have like five Rolex at
+[5:34] home. And this one I honestly never wrote it in probably like six months. So I'll be giving away to someone tomorrow.
+[5:42] It's kind of a nice one. We can't really see what's happening. Goldie, it's a good one. You like the Rolex? You want it?
+[5:48] Yeah. You want the Rolex? You won't have it. Someone else will have it. All right. Stay calm. [laughter] Okay. So, uh this is the Rolex, guys.
+[5:58] For those who are going to win it, congrats. And okay, I'll just answer the top three question I received since yesterday. And then onto theory. Okay.
+[6:05] Can't wait. So, the first one, I signed up, but I did not get my double deposit into Raise Effects. If it did happen, it's uh either because you forgot to put the code or maybe just system error.
+[6:16] just text raise effects. Okay, text the support of Raise Effects and tell them that you want to have your 100% bonus and they will just add it manually.
+[6:23] Okay, so this is not a problem for anyone. Then uh second question, I did not receive my access to the trading house online. Okay, so just contact me
+[6:30] on Telegram. You guys know my uh my name on Telegram. It's Bill Support or text me uh if you're in a VIP, just text me on Bill's VIP and we'll add you. Okay,
+[6:39] so I want to make this clear. I don't want anyone left behind. Okay, so uh so just text me on Telegram and then the 21day schedule. Okay, so this is simple.
+[6:46] Uh, a lot of you were asking this. So, London session will be live starting tomorrow, every single day at 12 p.m. Dubai time. Okay, so this is every day.
+[6:54] 12:00 p.m. Dubai time, London session. New York session will be at 5:00 p.m.
+[6:58] Dubai time and theory session will be at 10 p.m. Dubai every single day for the next 21 days. Okay, so uh this is it for
+[7:04] 21 days. Then we have uh inscription how to do how to subscribe pretty much it's in French.
+[7:12] [laughter]
+[7:13] Okay, so onto the theory session. Okay, so to uh to subscribe to uh to the trading house online, you just can or go to bills uh line richchy.com. I can do it with you guys if you want.
+[7:25] Just check this. Oh my god. Um so you can just type down what is it? Bills.
+[7:33] You just type this down here in the chat. Richie.com and then you'll be in. Okay. So this is pretty much it. You just put your first
+[7:42] name, last name, email, phone, uh birth date, country, street, and then you do the deposit of 1,000 into raise. Okay?
+[7:48] You click on open my trading account, and then you'll be in. Okay? So, if you haven't had the chance to do it yet, do it. And then, uh, you'll be in with us for the next 21 days. Okay? So, let's
+[7:56] get started, guys. Onto the theory session. I hope you guys are ready.
+[8:00] Goldie, you're staying in with us or uh, yeah, no, no, you're leaving. Yeah, you can leave. Okay. Say bye to Goldie guys.
+[8:10] Say bye to Goldie. Bye-bye Goldie. Ciao. Everybody say ciao. Okay. Bye-bye.
+[8:16] [laughter]
+[8:17] Thank you Goldie. Let's concentrate guys for theory. I take this very seriously.
+[8:21] Okay. So uh let's concentrate. Let me just plug my back. I think
+[8:32] Okay, let's get started guys. Uh so uh we have a few points I want to cover for first year recessions together. Hi,
+[8:39] Goldie. Yeah, it's showtime. I missed it. No, no, you didn't miss anything.
+[8:44] And we were just uh talking about uh some stuff that people had question on, but now we're starting Ti. I'll get the
+[8:50] music down a bit. There you go. This is on charge over here. There you go. Okay.
+[8:57] So, uh let's get started, guys. If you have any question while I'm doing it, uh by the way, you can just uh you can just ask in the chat. I'm checking in chat at the same time. So, no problem guys.
+[9:07] Let's get started. Uh let me put the chat clearer over here. There you go.
+[9:14] Nice watch, Bills. Bills watch market. Yeah, we'll check the market together. We have uh we're on FIP 61 right now.
+[9:19] Actually was looking at it earlier, but uh it's too late to take a trade for me right now, so we'll just focus later.
+[9:25] Okay, so onto the session, guys. Let's get started. This is uh episode one of the theory sessions where we'll have every single day. So sit down, take
+[9:34] notes if you want to guys and uh you can watch this live as much as you want cuz it'll still be there. So take the time to do it. Okay. So uh we'll talk about
+[9:42] the tools you need to trade. Okay. So today as uh the schedule is on, it's only going to be technical analysis.
+[9:48] Okay. So we'll talk only about technical things for a few days because there's a lot to cover uh and it's separate in three parts. Okay. So we have technical, then we'll go to priv psychology and
+[9:57] then we'll check fundamentals. Okay. So let's get started with Fibonacci levels.
+[10:00] I think you guys knew that I was going to start with this. Uh it's the most important one. Okay. So, uh let's start with this. I'll just put this at the Whoops.
+[10:12] I'll put this at the right. There you go. Okay. So, fib levels. Uh you guys know what it is already, but if you don't, I will talk about it right now.
+[10:20] Okay. And every uh PowerPoint that I have, I will switch to the charts so it can be visually better. Okay. So, fib levels pretty much what is it? It's a
+[10:29] retracement percentage that we have on the chart.
+[10:33] Okay. So for example on the chart we have two type of thing that the market is doing. Either we're doing a structure. Let me just put this
+[10:41] correctly. So okay listen carefully guys. So it's either the market is consolidating right? It's doing a structure or it's doing an impulse.
+[10:50] Okay. So an impulse is a strong move that a market is making. So for example if market is going from here till the highs this is called an impulse. Okay.
+[10:57] So we're moving to the bottom till the height. This is an impulse. And here when we're consolidating, it's a structure. Okay, we're consolidating. We call this a structure. So Fibonacci
+[11:06] levels is the percentage retracement from an impulse. So this is what you want to calculate and we have a lot of them. Okay. So to trace the fib levels,
+[11:15] it's really simple. There's one thing that you really need to keep in mind is that you always go from left to right.
+[11:21] Okay. Okay. So, once again, from left to right, you really have to sorry, you really have to go from left to right because if not, your fib won't be valid.
+[11:30] Okay? If you go from right to left, it doesn't make sense. You're going for a retracement level that was made in the past. Okay? So, this doesn't work. So, to trace your fib, let's go through it
+[11:38] together. You just go and find the lowest point that you've had before the impulse. Okay? So, where's our impulse right now? Obviously, it's from here to
+[11:46] the top. After this stop over here, we did not make a new high. And after this bottom over here, we did not made a new low. So if we want to know where price
+[11:54] will uh retrace before going back up to the upside, we need to trace our fib levels. Okay, so for this one, we'll trace it at the bottom of this wick over
+[12:02] there. And this is uh the live market, by the way, guys. It's it's still running, but we'll use it uh that way even if the market is moving. Okay, so we'll trace our fib from the bottom. So
+[12:11] it start at 100% as you can see at the bottom. Maybe I'll reduce my uh my face because I don't want you guys
+[12:18] to not see. There you go. Okay, so the bottom is 100% and the 0% will go at the top. Okay, so the top is 0%. Um and we
+[12:28] have all of these fib levels. Okay, so we have the 23% retracement, we have 38%, we have 50%. And then you have
+[12:36] these ones that I put in white because they're my favorite one. Okay, so we have FIB61, FIB 65, FIB71, then you have FIB 78, and then you have FIB 888. Okay,
+[12:45] so this is the retracement that we have on the chart. I'll talk about each of them and how I use it differently, okay?
+[12:51] Because I think there's a lot of ways to use fib levels. Um, not everyone use it the same way. Some people use it as as
+[12:58] soon as we touch FIB 61, they click on buy, they don't wait for structure. Some people trade fib that I don't personally trade. So I'll tell you which one I trade and why. Okay, so let's get
+[13:06] started with FIP 23 is not a FIP that I trade a lot. I will only trade it if I'm confident into my storyline. So, for example, if we have like uh a season
+[13:15] where it's all-time high season, we keep on making new highs after new highs after new highs. Most of the time, the market will not retrace up till 38 or
+[13:23] FIP 61. It will only touch FIP 23 and then push higher. Okay? So, if you look at the chart right now, we can probably find like one example of it happening
+[13:32] maybe here. I didn't check to be honest, but okay. Here we didn't even retrace on fib 23.
+[13:39] Um, was this a fib 23 over here?
+[13:43] Yeah. Okay. As you can see here, we've had a fib 23. We've had a strong impulse to the upside. Okay. So, from this bottom over here till the highs, it was
+[13:50] really strong impulse. And as I said, sometimes when you have something really strong, it doesn't retrace back all the way down to 38 or FIB50. We'll just go
+[13:58] up from FIP 23. I will only use FIP 23 if we have a strong momentum. Okay, so buyers are strong, sellers are strong on
+[14:05] both sides. It doesn't matter. Um I will use FIP 23. So this is it for 22. You don't if if the market has been consolidating for days and we're not
+[14:14] making any new highs. Uh I don't think you should um Can you show the time on the chart? What do you mean the time?
+[14:22] Um not sure what you mean, but let me put it smaller that way. Maybe this helps.
+[14:30] Maybe this helps that way. So um so as I said, FIP 23 only if you have strong impulse and you're confident about your uh fundamentals. Okay, so this is for
+[14:39] 23. Now FIP 38 is I I prefer FIP 38 than FIP 23 to be honest. It's our second retracement level and I like to use it
+[14:48] as a break and retest. Okay. So I will show you in a bit what what is a break and retest. But FIP 38 is really strong for once again when you have a strong
+[14:57] fundamentals. Okay. So I will not use FIP 38 if we're ranging. So if the market is just ranging, let me find you an example of what ranging is. I really
+[15:05] want to talk like a baby like uh like no one understand anything about what I'm saying. Maybe for some of you it's easy but um maybe there's some people in the
+[15:14] chat that it's not easy. So I want to take my time. Okay. So uh for example over here the market is just ranging consolidating before the next move. If
+[15:21] the market is consolidating and I trace a fib that way for example uh from here to here I will not trade a fib 38 because we're just staying in the same
+[15:29] level. So it wouldn't make sense most of the time when market is consolidating my favorite level that I trade with is fib 88. Okay? Because if market is
+[15:37] consolidating we're going to grab the sellers above. Okay? So the sellers to the upside we're going to go and grab them and then the buyers to the downside
+[15:44] we're going to go and grab them. So most of the time fib88 will be the best one for that. But we'll go through it later.
+[15:50] For now, all you need to know about fib 38 is really that if the market is consolidating and you're not sure about where the market is going, so your story
+[15:57] line is not strong, if you don't know anything about fundamentals, uh you shouldn't take a trade on fib 38. But in the inverse, if you have something
+[16:06] really strong about fundamentals and you know where market is going, you have a good uh market idea, you can use fib 38 if of course there's a nice structure on
+[16:15] it. And I like to use it when it's matched as I said earlier with break and retest. Okay, so we'll see what break and retest is. So as you can see over here, we've made Let me just take this.
+[16:28] So break and retest. I can even draw it for you guys if you want. I always like to draw things.
+[16:34] Where's my little brush here? Okay, so break and retest is quite simple. For example, we have an impulse to the upside. Okay, so the line is going up
+[16:41] and then the line decides to go back down over here and then the lines keeps on going up breaks the highs. So this is
+[16:49] the break. Okay, so let me just do it that way. Okay, so this is over here. As you can see, we've had a high over there at the top and then we retrace to the downside and then we've broke this high.
+[17:01] Okay? So once this line is broke, most of the time we'll go and retest this uh resistance that now becomes a support.
+[17:09] Okay? So once you have your retest over here and most of the time it will be matched with fib 38. If you wait for a structure to stabilize then you can have
+[17:18] a nice move back up to the upside. So that's the I would say the best scenario possible to use fib 38. Okay. So let's say for example we have our fib here. We
+[17:27] can trace it actually. Uh our fib over there. Okay. I should have put the line
+[17:32] a bit higher. But for example this line was going a bit higher.
+[17:40] Let's say this line was going up till the top over here. We come back down on FIP 38 that you can see over here. And then we have our break back up to the
+[17:48] upside. So breaking retest is simple. We make a high, then we come back down, then we break this high. This high becomes now support. And once we retrace
+[17:56] back on it, you wait for a structure and you go back to the upside. Do you guys uh understand? I'm not sure if it's 100%
+[18:03] clear, but uh I hope it is. Just let me know in the chat, guys, if it's
+[18:10] possible to understand for especially for those that are new to trading or don't know a lot. Uh I can say it another way also. I can say it again if
+[18:18] you want to. I know that for those that have been trading for me with me for a while, you you understand. But um for
+[18:24] those in the chat, let me know guys. I'm trying to chat the comment.
+[18:34] Restore chat. Yes. Yes. Yes. Okay. Now I can see. Very clear. Understood? Okay, cool. If it's not clear, guys, tell me.
+[18:42] Uh I don't have a timing for each live every single day. I can stay live for 24 hours. If you guys don't understand something and especially this this is
+[18:49] the basics. So if you don't understand the basics um you won't have like you know a base to start trading. So repeat one more time. No problem. No problem.
+[18:58] Okay. So let's do it one more time. So FIP 38 it's important to understand that you need to have a strong fundamentals
+[19:07] strong market idea. What is a market idea is for example fundamentals right now we've been cutting rates for a lot of weeks means gold's bullish. So if we
+[19:14] cut rates for a couple of weeks in a row, uh gold is bullish on fundamentals.
+[19:19] So if gold goes to the upside is on an uptrend, hi doggy. If gold is on an uptrend, um your uh your bias is is
+[19:29] buys, right? So when your bias is buy and you have strong market idea of where it's going, the market will go to the
+[19:37] upside and you will be able to use fib 23 and fib 38. So as I said earlier, I would suggest you to use FIP 38 only
+[19:45] when you have a strong bias. So for buys or sell and then to add an extra confluence to make sure that your trade is even more valid, I would wait for a
+[19:53] break and retest on FIP 38. It adds u probabilities that your trade will work pretty much. Okay, so break and retest, what is it? Um let's go back to the
+[20:02] upside for my little drawing. So for example, this is a candle over here.
+[20:08] We're going to the upside. We're making a high. Okay, once we have that high over here, we're retracing back down to the downside. This high becomes a
+[20:16] resistance. Okay, and then once we break this resistance over here, we call this a breakout. So now we've broke this resistance level. What do you want to
+[20:24] wait for next is a retest from that resistance that now will become a support and you want this support to be matched with the FIP 38. Okay, so let's
+[20:32] say comes back down to the downside over here. So you have a retest break. We've
+[20:38] break over here and retest. Okay. And the goal is for it to be matched with FIP 38. So, it's valid. Let's see if I had it this time. Oh, perfectly. See, now it's perfectly matched with FIP 38.
+[20:49] We can even make it clearer for you guys. Sorry. Okay. I think we can see really nicely now. So, we've had our fib that starts from here, 100%, goes up, we
+[20:58] make the new highs, then we come back down, then we've broke that line over here. So the fib level starts from the bottom until the top and then we retrace
+[21:06] on fib 38 break and retest. Then what do you do? You wait for a structure. We'll go through structure later. You wait for structure and then boom back to the
+[21:15] upside. Okay. So uh here's your entry at the end of the structure. So we'll talk about entries also later. Now we're really just focusing on uh uh those
+[21:23] institution taking liquidity. [laughter] Yeah. Sometimes that's why we'll talk about liquidity later. We'll talk about structure. We'll talk about a lot of stuff. Okay. So,
+[21:31] let's keep it simple for now with uh FIP 38. Okay. So, uh I think this was clear over here. So, as I said, Oh my god,
+[21:38] gold is flying, huh? That would that was a nice buy on FIP 61. Oops. Okay.
+[21:47] Okay. Let's go. Let's see. Uh now for FIB50. Okay. Personally, Fib 50 I don't use it unless it's on a really, really
+[21:55] high time frame. Okay. Okay. So, I could use FIP50, but it would it would need to be uh on 4 hours and matched with other confluence. Okay. If you know if you
+[22:03] don't know anything about FIB50, you don't use FIB50 if it's not matched with something else. Okay? So, I could take uh FIB 50. So, FIB 50 by the way guys is
+[22:12] 50% of your retracement. So, the retracement that we've had from the down here till the highs, 50% of it is FIB50.
+[22:20] Okay? And I will only use it if it's matched, for example, with a smaller FIB 61. So for example, we have a Fibonacci
+[22:26] 50 on 4 hours and we have also [snorts] a small 61. So on lower time frame, you take the last week for example over here
+[22:35] and it's matched with a small 61, this is something that I could take. But if the FIP50 is here alone, nothing else on
+[22:42] it, I wouldn't uh use FIP50. Okay, so uh uh FIP50, this is it pretty much.
+[22:47] Honestly, I don't use it a lot. For those that trade with me for a while, uh uh sorry, for those that trade with me for a while now, you know that uh how many times we take trades on 550, guys?
+[22:58] Like almost never. I don't think I've ever texted in VIP and say like uh uh guys, FIB50 is approaching stay active.
+[23:07] I don't think it happened a lot of times. So, so yeah, not really extremely important. Okay, so FIB50, this is it.
+[23:12] Uh then the next one, FIB 61. Okay, so we might spend a bit more time on this one. FIB61 is uh is pretty much my favorite fib levels and I use it in a
+[23:21] very different way than most people, okay? Because most of the people once the what they do is that once we arrive on FIP 61, they just click on buy or
+[23:29] sell if it's a sell. Okay, so this is not the way I do it. This is the retail way.
+[23:36] I have a baby water here. Super small.
+[23:40] So uh personally f61 I like to wait for a structure on it but most importantly I like to wait for a grab and a fake out
+[23:46] to the downside so that people uh like um how do I say it people
+[23:55] stop thinking that buying is possible you know so over here if you can see on FIB 61 what most of the retail are doing
+[24:01] is that uh we touch the 561 we have a fast reaction to the upside and then after it u they're in already we'll go
+[24:09] back down and grab stop loss. Okay, so we've did that here exactly perfectly.
+[24:14] Uh so we touch FIB61 every retails are entering. Let me just trace a line.
+[24:18] Okay, so market is going down, we touch FIB61 level. What retail are doing is either they have a buy limit or they
+[24:26] just click on buy right away. Okay, so once they click on buy on FIP61, uh sometimes market will go to the upside at the beginning. Okay, so that's why
+[24:34] most of the time we have fast reaction on FIB 61. a lot of people are buying right on it. And then after to trick those retail trader because most of the time it's not going to be as easy as it
+[24:43] looks like. We'll go back down, grab their stop loss just like we did here, okay, on fib 65 or on fib 71. Okay?
+[24:51] Because if you need to understand something is that most of the retail traders when they enter a trade on fib 61 they will put their stop loss either
+[24:59] on fib 65 just lower either on fib 71 lower or if someone is I would say
+[25:08] greedy he's going to put his stop loss on fib 88. Okay so this is thing that happens also there's some retail they enter on fib 61 they put stop loss on
+[25:16] fib 888 uh which is a bit crazy because you're over risking for nothing. You could just wait for Fibidi8 and wait for
+[25:23] a structure on 61. But anyway, this is how they do it. So, personally, I like to wait for at least gold to make a fake
+[25:30] u push to the upside on FIP61 and then grabs uh stop- loss on FIP 65 and then I'll be interested to enter a trade.
+[25:38] Okay, so actually this trade here was valid. Uh it was not stupid to try it.
+[25:42] It was on the third retest though. So you had to try it a few times and it was really late on New York. So not the best timing, but structure-wise it was it was
+[25:50] it was great. After the third retest, retail trader maybe thought, "Oh, it's going down." And then they saw the market going down from here to here. So they were like, "Okay, it's probably
+[25:58] just going down." They gave up and then we're doing the move to the upside.
+[26:01] Okay, so FIP 61 is one of my favorite one, but as I said, you really need to use it in a different way and you need to wait for a structure. Okay. So for
+[26:09] all of these level FIP 23, FIB 38, FIB 50 and FIB 61, N78 and 88, you have to
+[26:16] wait for a structure. Now what's a structure? It's just price consolidating. Okay? So need price needs to consolidate on your level. I would say if you can wait for four to five
+[26:25] candle, it's the best possible. But sometimes after three to four candle, I'll take a trade if everything else is matching. Okay? We'll go through
+[26:33] everything else after. But and we'll go for structure after. I think the most important thing about the course uh related to technical analysis will be
+[26:42] structure and Fibonacci levels and liquidity. Okay, so these three take a lot of notes. Okay, so FIB 61 just to
+[26:49] recap, you need to wait for a structure first of all. Second of all, don't buy as soon as we touch it. This is what every retailer doing. And if it was that
+[26:57] easy just to imagine yourself, you just wake up in the morning, you trace your chart, you have uh you trace your
+[27:05] Fibonacci levels, and you put a buy limit on FIP 61, put a stop-loss, and you go to bed. Like, trading would be way too easy. You got to be smarter than
+[27:12] 95% of retail trader if you want to make it in trading. And being smarter doesn't mean um putting a buy limit on FIP 61 and just waiting. Okay, this is not
+[27:21] smart. So, you should wait for retail trader to change their mindset. Oh, maybe it's a sell. Oh, maybe we'll grab the quity lower. So once we grab liquidity, you know that most of the
+[27:30] retail that entered right away on FIP61, they just hit stop loss. And once they hit stop loss, what will go through the
+[27:36] mind is, oh, maybe it's a sell. So now they'll start selling. And then we'll go back up. So then maybe they'll be, oh, maybe it's a buy now. And then we'll go
+[27:44] back down over here and it'll be, oh, it's clearly a sell. We can't push. And then boom, we do the real move. Okay?
+[27:50] Okay. So that's why I'm saying you need to be smarter than retail because um if not you will be stuck in manipulation that institution or gooan are doing
+[27:59] against you. Okay. So for now uh on this level over here it was clear manipulation. I don't think a lot of retail cut that unless you had a good um
+[28:08] market idea and you were waiting for the grabs. So us like before the move even happens we already know uh that we'll have grabs and it won't be easy to take
+[28:17] it. I did take that. That was crazy. Who took the buy, guys, on FIP61? For those that have been trading with me for a while, I wouldn't be surprised that uh
+[28:24] that you're in. Let me know, guys, who took this buy. It's kind of a 380 pips buys. That's crazy. Was on it at 104
+[28:34] uh before the the final grab. Anyone in the live uh guys took the buys.
+[28:41] Kind of a textbook trade. It's just a bit late right now in uh in New York. Me was stopped out. Me, me, me. Oh my god.
+[28:49] Okay, we did. I did. Me. Oh my god. A lot of people took the buy. Huh? Where did you learn how to take buys like this on 561, guys? Holy. Good stuff.
+[29:02] I got be. Yeah, I understand. It's been three retest. I did. Good stuff, guys.
+[29:07] My god, why am I learning you guys how to trade? You already know it.
+[29:10] [laughter]
+[29:12] Thanks, Billy. No problem, bro. Took it hits. Break even. Understand, bro.
+[29:21] 103. That's nice entry. All liar. I don't think so to be honest. It was It's kind It was quite textbook. Um,
+[29:30] why is everyone saying me? I asked who took the buy on FIP61 at 4103 4104.
+[29:39] Learned it through your course. Yeah, I mean the course in VIP uh VIP course.
+[29:43] Yeah, we know it from you. Yeah, the course in VIP explains everything I'm explaining you right now, guys. So, so just that now we're live so you can ask question, we can talk about it for
+[29:52] hours. I think the course in VIP is a bit smaller than what we'll be live today on.
+[30:01] We want the fib level settings. Yeah, if you want to have the settings, guys, uh it's already in the trading house online, but u if you need the settings, you can just take a a screenshot of this
+[30:08] guys. I'll give it a minute. Just take a screenshot.
+[30:14] [clears throat]
+[30:19] Take a screenshot, guys.
+[30:24] Check VIP bills. I took it. Okay. Yeah, I'll check this after. Congrats, bro. Congrats if you took the trade, guys. Good stuff.
+[30:32] I would have take it, I think, on this third candle at 05 with stop loss at 01.
+[30:36] So, like 40 40 pips stop loss on this one pretty much. I hope you all risk it less than 40 pips.
+[30:43] Now on this candle it was valid even this one at 06 but bit late.
+[30:49] Okay guys, uh let's keep on going. What we should do now? Not don't we're not this is theor session. I know the market is open guys but uh if I'm starting
+[30:57] taking trade on the rec sessions uh it will never ends okay and I want you guys to learn also like u taking trades is fun and but we have session for trades.
+[31:05] So uh I wanted to really focus and honestly this trade was interesting but I really wanted to focus on theory. So uh [cough and clears throat]
+[31:13] so let's be patient. Okay. So uh we're done with FIP61 guys. Any question for uh for fib 61? Any question for Fibli 61
+[31:21] level? Let me know if anything. Yeah, I entered on the retest and get break even before it goes up. Am I wrong? No,
+[31:29] really not, bro. Really not. Actually, uh I was in front of the chart when we've had the first retest on FIP 61 and when it's late on New York, I never take
+[31:36] trade on first retest of fix. It never works. So, if I were you guys, I would have waited the second retest, but then most of the chances are you got break
+[31:45] even and it's completely valid. So, if you took it on the retest on 561 and got break even, honestly, you did great. You did great. Sorry. If I understand,
+[31:54] Bill's structures a consolidation of a key level around 45 candlestick. Exactly. You said it in the perfect way.
+[32:01] It's clear, bro. Perfect, bro. Let's go. I risk 30 pips. Good stuff. If we buy on 61, stop loss goes where?
+[32:09] We'll talk about stop loss later guys.
+[32:10] We'll be together for 21 days. So, we'll talk about it later. But for example, you you would have buy over here on this third candle at 05. Stop loss will go
+[32:19] below lowest wick that we've made before the jump. So, stop loss will go below this wick and take profit would have go I would have take liquidity at 34. So,
+[32:27] my take profit would have been 34. A nice uh one one to seven risk ratio in like 30 minutes. So this is pretty much
+[32:34] like the setup you needed to take. Um either second candle second candle wouldn't mind also you would have risk a
+[32:41] bit less like 30 pips like 1 to 11 and uh yeah this would be this would have been like TP3 here and then we'll have
+[32:49] more TP above but anyway yeah nice setup guys. Um okay so 561 we're done. Good stuff guys. Uh Bill is a good teacher.
+[32:59] Thank you bro. So congrats guys for those who took the trade. really congratulations. It's it was clean. It was textbook. If you tried it only once also like really good patience. So, uh
+[33:08] keep it up guys. Okay. So, uh FIP61, FIB 65, 71, uh 65 and 71. I don't trade it.
+[33:14] It's just a level that I'm waiting for liquidity grab before entering a trade.
+[33:17] So, I like when we touch FIP 65 and FIB 71. I like to see gold go back above 61 or at least go back close to 61 to show
+[33:25] me that 65 and 61 or we're grabbing enough liquidity to push back to the upside. Okay. So, uh, I still trade it,
+[33:32] but I'm always waiting for gold to go back around 61 fib levels and then we'll take a buy.
+[33:38] Then fib 78. Uh, bit mixed feeling about FIB78 right now. It's been working quite well in the past few weeks, but not my
+[33:47] favorite one. Okay, I used to trade FIB78 a lot, but uh, retail traders started trading it, so I just prefer to wait for FIB 88 to be honest. Um, we'll
+[33:55] go through FIB 888 after, but it's such a good level lower on 88. there's a lot more liquidity. So, in my opinion, if
+[34:04] we're reversing on FIB 78, it just means one thing. Institution doesn't want to go on 88 yet. So,
+[34:12] it's rare. I know it happens sometimes, but it's rare that you'll see a move from FIB 78 that will make like more than a,000 pips. Like most of the time, it's just that they're not ready to go
+[34:21] on Fib 88 yet. So, they're reversing the market before. So, personally, I'm not a huge fan of FIB78. I prefer to
+[34:29] I prefer to trade the fib 888 uh personally. Okay. So, uh if you want to take a trade on fib 78, you can. But if I was you, I would wait for at least to
+[34:37] be matched with another fib 61 or match with uh we'll talk about other confluence later, but match with uh moving average, match with a trend line,
+[34:45] match with psychological number, match with something, you know. So, uh so yeah, but structure is on M5. Yeah, by the way, for those asking, when I talk
+[34:53] about structure, about price consolidating on your key level, I'm talking about on 5 minutes time frame.
+[34:59] [snorts]
+[34:59] Okay, so FIB78 personally, I don't really trade it. If you do want to trade it, uh wait till it's matched with another confluence. If not, uh you don't really have to trade it. Okay, then fib
+[35:08] 88 the one of the best fib level. Okay, fib88 is a huge liquidity level. Why? because every retail stop-loss are on Fib88.
+[35:21] There's not even retail honestly.
+[35:23] Everyone's stop loss is mostly on Fib88 and it's the biggest takerit level.
+[35:29] Okay. So, personally, let's say let's say I took a sell here on Fib88. Let's say I took this
+[35:38] cell here. My take profit my final take profit will be on Fib88.
+[35:45] So, what does that do? remove liquidity from the market so we can reverse. So it's a huge take-profit level and
+[35:53] say remove that it's also a huge stop-loss level. So if you were to take a bite I told you earl
+[36:04] they just put their stop loss on 88 and this is a weird way to trade 1 to2 ris ratio it's a bit awkward but uh this is
+[36:11] things that happen. So what does that mean? Is that mean all the liquidity is on there. So most of the time
+[36:21] it'll be a reversal level and not only it will be a reversal level it'll be extremely fast. Okay. So most of the time the reaction on Fib88 is fast. I
+[36:30] would say it's the only level you can enter on the second or third candle.
+[36:35] Okay. So it's the only one uh that you can enter on the second candle. If you want to do something uh more aggressively, I would say fib88 is
+[36:42] really the only one after uh that you can enter after two candles.
+[36:48] Okay, so now the fib is not traced enough because we made a new high. So you would need to change your 0% to the top. I think uh you understood that. So
+[36:56] Fib88 at the bottom guys [clears throat] as I said is the biggest take-profit level is the biggest stop-loss level which means that once we
+[37:04] touch this level there's a lot of liquidity getting out of the market which means that the move will most of the time be fast so you can take it a
+[37:12] bit more aggressively but still you need to wait for enough liquidity to be grabbed at the left uh other confluence if you can I never take a trade as I
+[37:20] explained to you guys uh yesterday on the launch of the trading house um I never take a trade What was I going to say? I never take a
+[37:28] trade if it's only one green color. So, if there's only one confluence that match my trade only 58, I will not take the trade. Okay? You need to have at
+[37:36] least another fib that is matching with it. You need to have moving average. Uh we'll talk about all the other confluence, but you shouldn't trade
+[37:42] based off one confirmation because one confluence is not a confirmation.
+[37:49] So, this is it. And to come back to the example that we've had yesterday, guys, before a pilot takes his plane off,
+[37:56] let's say he [snorts] has 10 things that he have to check on his checklist, if he only checks one and not the nine others, is he taken off?
+[38:07] Of course not. You know, so it would be dangerous. He could lose his job. And you need to think about trading the same way. If you know that you have a trading
+[38:16] checklist, I sent it to you guys that joined Trading House online already. uh today I sent it to all of you. If you have all your trading checklists with
+[38:23] all your bullet points, will you take a trade if only one of them is matching?
+[38:27] No. You need to wait for all of them to match. Uh you want to preserve your capital, you want to protect your capital, and you want to trade for the long run. So, you're not taking a trade
+[38:35] unless it's the best possible. Okay. So, uh let's get it. Where are the fibs? Uh the fib is on the left of your chum. You can even do it if you want.
+[38:45] See, the fib is I'll show it to you here. It's this one over there. Okay. So, you click on this
+[38:54] fib retracement tech, you know. So, it's here. First one. Fib retracement. That's where the fib is.
+[39:05] Printed out 10 copies already of the of the plan that I sent you in the trading house. Nice, nice, nice, nice. That's what I want. I didn't uh send you guys
+[39:13] this this guide on PDF for you not to take it.
+[39:17] Um but Bill yesterday you said aim 1 to8 risk at minimum. So you would take a 1 to2. I would never take a 1 to2. No never never. Look this trade over here.
+[39:29] What was it? This trade over here for a buy on 561. It was stop loss here.
+[39:36] My take profit as I said would have been at 34. It was a 1 to8 riskreward ratio.
+[39:40] This was 1 to8. But this is where I take my profit first of the time. Then I'll take it higher for TP4. So if we make an
+[39:47] average between 1 to8 and 1 to 12, I'll have a trade for 1 to 10 and then maybe I'll hold a runner that will go for a,000 pips. So I always go for 1 to8
+[39:56] minimum. I would never take uh this the example that I was showing guys was retail trader that enters on FIB61 and
+[40:02] put their stop loss on FIB88. This creates a 1 to2. But if you enter a buy on FIB61 over here, you're not going to put your stop loss on FIB88. You'll put
+[40:11] it below the lowest wick. So So yeah, where's the guide? Send PDF checklist to general. I sent it to uh the trading
+[40:19] house online. It was part of the bonus guys that I told you yesterday if you join. So uh if you haven't joined Trading House online yet guys, you can join tonight before tomorrow. So you
+[40:27] won't miss anything. Okay. And as I said earlier, for those who just joined the live, this is uh the trading house online theory session one. Uh we're doing it uh open to everyone today just
+[40:36] because there's a lot of people that joined us yesterday and I couldn't have the time to put all of them in the group and make sure everything is set up. So I
+[40:44] felt bad for those people because I don't want them to miss the first theory session which is will be really important. So I decided to open it to
+[40:52] everyone and at the same time it's going to help a lot of people so why not. Okay. So uh this is only about today.
+[40:59] [clears throat and cough]
+[41:00] Okay. So fib88 is done. Then we have fib 100%. I don't trade 100%. It just shows the beginning of your fib. Uh for sure that 100% is a liquidity level. It's the
+[41:09] lowest low that we've had before reversing. So uh it's quite important also but I will not uh talk about it.
+[41:16] Okay. So uh this is it. And now I've showed you how to uh trace a biib right. So I've showed
+[41:24] you how to do it for buys but in reality it's the same thing for both sides. Okay. So both sides are the same.
+[41:30] There's not one that uh change. If you want to look for a sell you will find the highest high that we've had before the impulse. You could use this one or this one. Uh I'll use the highest one
+[41:38] for this one. So you just start your fib from the top. This is the impulse that we have until the bottom. Okay. So as
+[41:46] you can see at the bottom here, we have 0%.
+[41:49] [clears throat] So you can trace your fib that way.
+[41:52] Let's say over here now we've broke that high. But uh I'm showing you this guys because uh let's say it doesn't it's not valid anymore
+[42:01] because we've broke it. But for example, market looks like this. As you can see over here,
+[42:08] the market was extremely bullish this morning. We've went up really fast. So I wouldn't take 23, wouldn't take 38, wouldn't took 50, 61. There was no structure. Fib 88 was valid over here.
+[42:19] Okay. So we've just saw the fib. I took a sell which you guys are thinking the trading house like on the fourth candle
+[42:25] of fib 88. We've took a sell here all the way till the down. I was risking literally nothing on this trade. I think
+[42:34] stop loss was there. Uh we've took the sell in the in the in the group today on the trading house. It got down 100 pips
+[42:42] and then uh 110 pips and then it came back up to break even uh before doing the big drop. So unfortunately price was manipulated today. We literally hit FIB
+[42:51] 888 four times before dropping. But uh still a nice trade. This is what we took today uh in the trading house and then we uh got back down later. So just to
+[43:00] show you guys that fib88 here was the move. But three candles later. Okay. So, uh as I said, same thing for cells.
+[43:07] Okay. It's just different ways. So, when you want to do it for cells, you will go for the highest high until the lowest low and always once
+[43:15] again from left to right. Okay? So, always from left to right. You never trace a fib from right to left. It won't
+[43:21] work. Okay? So, this is it. Let me move this.
+[43:30] There you go. Okay. Okay, so we're done with fib levels. Any question guys about fibs? I think it was quite clear. You can we watch this live as much as you
+[43:38] want as I said earlier. So, uh don't have to worry about it.
+[43:44] Any question guys about fib levels? You tell me. [clears throat]
+[43:51] How do you take multiple profits? Uh take profit levels. We'll talk about it.
+[43:56] I think um it will be another day. It's not today.
+[44:02] Take profit level is not today. We're guys, we have 21 days of this. So, if we go through everything in one day, uh
+[44:09] it's not possible. We'll have to be uh I'll have to be live for 30 hours.
+[44:16] [clears throat]
+[44:19] How do I join the trading house online?
+[44:22] Um you can just uh scan this QR code here. scan this QR code or go to billslinerichy.com
+[44:30] and you'll be able to join us uh for the trading house online for 21 days.
+[44:34] Today's day one so you're not missing anything if you join today. U okay so this is it. Uh I was asking if
+[44:42] you have question about fib levels 88 is too important but 61 I become more manipulating. U 61 yeah is always a bit
+[44:49] more manipulated but it could be a huge reversal level. Okay, most of the huge trade that I've took, like the two sales that I took on last Friday, guys, that
+[44:57] made like a thousand pips were both on FIB 61. So, I don't really remember exactly where it was. I think I took a sell uh
+[45:06] yeah, took a couple of cells here. Whatever. U
+[45:14] computer is lagging a bit, I think. Oh, yeah. Here. So, the first sale that I took, guys, on Friday. Okay,
+[45:22] so you can understand was fib 61 over there. We've had no reaction on 61. Then went on FIP 71 and then uh I took the cells.
+[45:31] I think that was like here.
+[45:37] That's the first sell that we took on Friday.
+[45:40] It made like 1,000 pips and then we took a second right after it. Once again, I think on FIP 61 it was here.
+[45:50] It was like fib 71 or 88. Yeah, it was fib88 on second one. Okay. So, uh um
+[45:58] uh what was I trying to say uh I was just wanted to show that fib 71 also works uh really well. So that's why I always wait for 71 and fib 65. Okay.
+[46:08] So uh I don't remember the question you asked but uh let's get it. Okay. So it can work for sells and buys case guys.
+[46:15] There there's no worry. Any other question for fibs guys? Will you cheat about market structure?
+[46:24] Yeah, of course. We'll spend a lot of time on structure. We'll have to uh we'll have to spend a lot of time on structure for sure guys because it's
+[46:32] really important and we'll have to see different type of structure because there's a lot of different structure. It's never the same actually.
+[46:41] But if you um
+[46:44] [clears throat]
+[46:44] but if you learn uh some different type of structure, you'll be able to recognize them after. So it'll be easier. Will you teach about market structure? Okay, this one I read.
+[46:53] How do you draw small and big fibs?
+[46:55] Okay, good question. Uh small fib is on smaller time frame. So right now we're on M5. Okay, so let's say for example, this would be our small bib. Okay,
+[47:03] forget about the the highs that we've made. Uh this would be our small uh and actually I can replace just so you're not confused. This is for example a
+[47:12] small fib on M5 and then let's say you go on M15. You'll go that way. We could trace also a big fib that starts from
+[47:18] the bottom bottom bottom of uh the impulse that we've had. So here as you can see we've had big 38 over there. Big 61 over here. So that's why I'm saying
+[47:27] big now because we're on big fib. So big 61 is at 469.
+[47:31] Uh big fib 88 is at 4,042. So these are huge level and the more uh the more you go on higher time frame the more valid
+[47:39] your zone becomes. Okay. So uh this you need to remember if you're on higher time frame you will have uh better chance of winning a trade. What time
+[47:47] frame do you choose? I I I do my analysis on M5 and M15 and sometimes I'll go on 1 hour and 4 hours uh depending but if for example I wake up
+[47:55] in the morning and I do my fib levels on 4 hours there's not a lot of chance that I will take a trade. Okay. So, if I do it that way, uh, before price reaches to my zone, it will take a lot of time.
+[48:05] Okay, it's 2,000 pips later. It's just good to know where they are. So, in case we're here on that day, you're lucky, [snorts] you'll have a really good trade. So, uh, so yeah, but uh, I always
+[48:15] enter a trade on M5 and I do my analysis on M5, M15, 1 hour. So, this is it.
+[48:22] What time frame is best to draw a fib? I would say M15 works really well. M15, I would say.
+[48:30] Can it works on C trader? Yep. But if I was you, I would use uh Trading View to do your analysis. I wouldn't use C trader. It's less clear.
+[48:39] Um sell zone. What time frame do you use?
+[48:47] M5 for entries, M15 for analysis.
+[48:51] Do you ever look at FIB on the daily or weekly time frame? When I do my Sunday analysis, I'll look at the market on daily and weekly just to see if there's um any good confluence that you need.
+[49:02] And um yeah, this is it. Will this live be recorded in channel? Yeah. And if you're in if you're part of the trading house online, you will be uh you will be
+[49:10] able to uh understand everything after uh because you will have pre-recorded everything will be sent in the trading house online uh channel. So you can watch it as many time as you want.
+[49:23] Uh what is your best trade with your confirmation?
+[49:29] Sorry, my best trade with my confirmation I would say fib 61 match with fib88 with both moving average with trend line psychological level. Uh grab
+[49:37] liquidity. Honestly, it's it's a lot but I want I don't want to say like too much because you guys will not understand for those that are new and I want to talk to people that are either new to trading
+[49:46] and I want to talk like so that everyone understands, you know. So, we'll go through it one by one and then you'll see that by the end of the 21 days,
+[49:53] guys, everything I will say won't be Chinese to you. So, that's why it's good. I'm flying to Dubai. Are you flying to Dubai? We're having uh someone
+[50:02] flying to Dubai tomorrow, guys. I'll be live on London uh with you guys on the trading house with someone on my side here and we'll try to teach him how to
+[50:09] trade with you guys. So I figured that it would be better to have someone at my right so I can show him really the proper way and at the same time you will
+[50:17] learn what I'm teaching him you know so all of his question will be good for you and this will be only on London tomorrow guys with you
+[50:26] do you think it's a good idea to bring someone at my right uh someone that joined the someone that joined the training house online did you send a PDF
+[50:34] with the lesson in advance I've sent everything in the training house group everything should be in the in the training trading house official group.
+[50:42] Just add more here. Uh this is here. My checklist is in the Telegram group. You can probably see it. Check
+[50:50] in the official group here on the on Telegram. You can see you have my checklist. Everything is there for you to understand.
+[50:57] So, uh yeah, you can do trick.
+[51:00] Yeah, it's a good idea. Yeah, me to Dubai. Can you bring me? I blew my fun. Did you?
+[51:09] It is distraction. Um, it's a distraction to have someone on my right.
+[51:13] No, not really. You know, during uh during the trading house in person in Dubai that we've made in u
+[51:20] and what is it, July? Uh they all learn a lot. So, I figured if I bring someone to my right and show him and you guys
+[51:28] how to trade the proper way, I think it's going to be insane. Dubai is going to be lit. Yeah, all sessions are recorded, right? Yeah, every sessions
+[51:36] are recorded. If you join the trading house online guys, you will have every session recorded. You can watch it as many times as you want. I thought
+[51:43] giveaway to fly out. It's it's it's a giveaway to fly you out to Dubai so you can live with me for a whole day. So So
+[51:52] this is it. It's not just flying out to Dubai. It's not just uh it's not just I'm flying you out to Dubai and you do whatever the you want. It's I mean you can if this is what you want, but I
+[52:01] think most of people they want to sit with me for a whole day.
+[52:08] It [clears throat] is clear build next session. No problem. Okay. So fibs are clear. We'll go through it a lot of time guys. Anyway, okay. I just wanted to
+[52:14] explain you the basics but uh we'll go through it like so many times during the 21 days. So don't worry if there's still some stuff that you're not like 100%
+[52:23] sure and with the trading session that we'll have every day it'll be extremely clear for you guys. Okay. So Fibonacci level is done. Uh number one. Then we'll
+[52:30] go through SMA and EMA. Okay. So, we're not really staying on PowerPoint because I don't think there's any point of staying on PowerPoint when you're doing uh technical analysis. Okay. So, we'll
+[52:39] go straight back to the chart for simple moving average and exponential moving average. Okay. So, I hope you guys are ready. [snorts] Uh what time frame is
+[52:48] best to look for structure? Uh M5 while entering a trade. Where is the Rolex? The Rolex is here.
+[52:55] We're giving it with a I will give it away tomorrow. Okay. This is the one that I will give away. I have five Rolex personally and this one I don't think
+[53:03] I've ever wor wore it in the past 6 months. So I figured I can give it to someone who joins the training house and
+[53:10] take one trade. Okay. So uh before we go through AMA SMA, it will be give to someone who joins the trading house and take one valid trade with my checklist.
+[53:20] So the only thing you need to do is join Trading House, take one trade and you can win it tomorrow on live. Okay. So uh anyway, I'm ready. Let's go. Dubai me please.
+[53:31] Already in Dubai. Let's go.
+[53:34] Okay. So, let's keep on going. Moving average. Uh I know a lot of people use it in a different way for sure. Um not everyone can use uh moving average the
+[53:42] same way. I think maybe there's some people they use it as to know where the trend is going uh how the market will look like. But personally, I use it as
+[53:50] support and resistance. Okay? I'm telling you it's the best way to use it on EMA 200 and SMA 200. Um so support resistance if you don't know what a
+[53:58] support is it serve as u a floor okay so support is a level that
+[54:08] creates the move so it's pretty much 100% on your fib and 0% so this is resistance
+[54:15] and this is support okay so support is a floor resistance is a roof and the goal is when we go into the
+[54:22] resistance level market uh reverse okay cuz It's a level that could reverse. So it's like, how can I say this? Okay.
+[54:31] Yeah, let me just show you. Market, for example, is going up. We'll touch the roof, come back down, touch the roof, come back down. So it serves as like
+[54:38] protection, you know, but at some point, the more you test it, the more it has odds to break, right? Um, and same thing for the bottom. You go down, you test
+[54:47] the support, you go back up, you come back down, you test the support again, and then you go back up. And at some point, if we keep on retesting it, it will break. Just like everything in
+[54:55] life, if I keep on punching on a wall of brick, well maybe not if brick, maybe I won't break it. But at sometime if I'm really strong, I will break it. Okay, so
+[55:04] same with the chart. Don't think that it's something that is unbreakable.
+[55:07] Okay, it is. And this is how I use moving average. Okay, so moving average for example, right now they're going up.
+[55:13] Okay, let's say we can take the example of here because it worked pretty well.
+[55:17] Let's say you trace your fib levels for here. Okay, the top till the bottom. You have your fib 61 here and it's match with moving average. Now will you take a
+[55:26] trade just because there's moving average? Let's say you don't have any fib levels, you don't have any trend line, you don't have any psycho level.
+[55:33] Would you take a trade just because we have two moving average?
+[55:43] The answer is no. Okay, I can't see the chat because we have a bit of delay, but uh the answer is no. You don't take a trade based off one confirmation. I told you guys the example of a pilot earlier.
+[55:53] So the moving average we use it as an extra confluence to your trading to take a trade. The more things are matching
+[56:01] with your plan, the more chance the trade will work. Okay? So if you have moving average trend line cycle level
+[56:08] fib 61 match with another fib 88 match with this this, you know, at some point everything is matching. Silver is
+[56:15] bullish. DXY is bearish. everything is matching then you can take the trade. So moving averages is really just an extra confluence and when price is going for
+[56:23] example over here to the upside what you want is that when it comes back down for example the level that you're
+[56:30] looking at is FIB61. Let's say FIB 61 is your level.
+[56:36] You're waiting for it. You have psycho level. You have a trend line. Uh you know you have everything matching on this level for example over here and
+[56:45] it's matched with moving average they will use as a support. Okay. So when you are buying when you are buying it will
+[56:52] serve as a support and when you are selling it will sell it it will it will
+[56:58] serve as u as a resistance. Okay. So the goal of the moving average is that as I said when you're buying it will serve as
+[57:07] a floor. So we'll touch moving average plus your FIP 61 plus everything you have matching and we'll go back up to the upside and when you're selling it
+[57:15] will serve as uh resistance. Okay, just like over here at the left. Okay, so this will serve as a resistance to go back lower. Okay, so do you have any
+[57:24] question about moving average? Really the only thing you need to remember is that uh it will serve as support. I use it as support resistance as an extra
+[57:31] confluence on my level before taking a trade. So for buys it will serve as a support over here. As you can see we've
+[57:38] got down on the moving average then came back to the upside and on uh on when you're selling it will serve as resistance. Okay. So we pretty much uh
+[57:47] let's find an example over here. For example here we have both moving average. We've had this fib levels over here. So we've had fib 88 moving average. It's an extra confluence. Okay.
+[57:57] Okay, so the goal is to have the most that the more confluence you can have on one level. Okay, so this is it for moving average. Not really complicated.
+[58:05] And once again, guys, I will um go back on them every single day. Today is really just a briefing of what's the definition of it. Okay, what is the EMA?
+[58:17] EMA is the exponential moving average.
+[58:19] And as I said earlier, guys, you want to see my settings. I don't know if you can see at the left. Okay, check this here at the bottom. You see EMA 200, SMA 200.
+[58:28] If you want to have it on your chart, you click on indicator. Okay? Then you will click on EMA and you will see the first one
+[58:35] exponential moving average. You click on it. It will add. Once it will be added on your screen, you go and you try to
+[58:43] add SMA. Okay? So, you can do that. You can do it at the same time as me.
+[58:47] [clears throat and cough]
+[58:48] SMA. Then you'll see they're both there.
+[58:51] Now, they are both nine close. So you can double click on it and then you will change the length to 200. Uh nine close
+[59:01] is not enough to use. Okay? If you use nine clothes, it's not accurate enough to show you the trend of the market. Okay?
+[59:11] So you need to use 200 um EMA and SMA.
+[59:14] For me, I I've tried all of them. When I got started trading 5 years ago, I tried all of them. the nine, the 15, the 50, 100, and 200 was the one that was
+[59:24] reacting the most. I've done hours of back testing, and EMA 200, SMA 9, 200 are the best. Okay, so don't use nine. Then you change 200 on the other one.
+[59:33] Also, you put the color that you want and then you're good to go. Okay, so let's remove them.
+[59:40] There you go.
+[59:48] There you go. Okay. So, EMA, SMA is clear. What about 150? As as I said, guys, the I don't want to criticize if
+[59:55] you're using a different one. If you're using different numbers, okay, but I've done plenty of back testing and I've
+[1:00:03] checked all of them to see which one is working the most for me on the long run.
+[1:00:07] And in the past 5 years, it's the 200 one. So you're free to you're free to choose whatever you want but I would
+[1:00:14] suggest you 200. I'm just here to suggest you. Okay. So uh this is it.
+[1:00:20] [clears throat and cough]
+[1:00:21] And are you going to place any trade tomorrow on live stream? Yeah. You will see my uh my trade in real time uh on London session only with uh the trading
+[1:00:29] house online session. Okay. So don't worry for those that join the trading house uh already. You will see on London you will see my trade in real time. You can take it if you want to. As I said
+[1:00:37] yesterday you can uh you can take it if you want to. If you don't want to take it, uh, you don't have to. So, this is
+[1:00:43] it. Um, let's go back structure. Okay. I didn't know we were
+[1:00:50] talking about structure today. It might take a lot of time. I hope you guys are not in the worried. What time is it?
+[1:00:57] 12:20 a.m. All right. Okay. Okay. We've been live for an hour already. Holy.
+[1:01:03] Okay. So, structure. I'm I'm thinking if we keep it for tomorrow because it's it's I want to put a lot of time on it.
+[1:01:09] I want to talk about structure for at least an hour. And I think I want to have already a lot of structure ready so
+[1:01:18] you guys don't miss any type of structure. Yeah. Yeah. Yeah.
+[1:01:25] Yeah. I think we'll keep structure for tomorrow guys because it's really uh it's really uh it's really important and I don't want to put uh like I don't want
+[1:01:34] to go through it fast you know I want you to understand so [clears throat] we'll we'll skip that and we'll go straight away to liquidity grab okay so
+[1:01:42] liquidity grab is extremely important also uh let's do it tomorrow no [clears throat] problem no problem yes okay I don't want to go fast on this one
+[1:01:51] so since it's late uh we'll we'll just skip it for today we'll be back tomorrow. By the way, we have 21 days, guys. So, so let's go. Okay, so
+[1:01:59] liquidity grab is really simple. It's the action uh that a liquidity sweep has made. Okay, so we have two uh over here, liquidity sweep and liquidity grab.
+[1:02:07] We'll go through both of them together.
+[1:02:09] Uh liquidity sweep is the action that we're making pretty much. Okay, so liquidity sweep is for example right now in the chart, you want to identify your
+[1:02:17] level of liquidity. Okay, so this was one. It's been grabbed.
+[1:02:24] Has this been grabbed? Okay. Where's our liquidity right now as we speech as we as we talk? Uh the only one that we've had left was this one over here. Okay.
+[1:02:33] So, what is liquidity guys? It's it means liquidity is money. Okay. So, you want to know how you can find your liquidity levels? You need to know
+[1:02:40] where's the entry. So, is there anyone in the life that has trouble to identify liquidity?
+[1:02:46] If yes, uh if yes, I I'll show you exactly what it is. It's quite simple.
+[1:02:58] [clears throat]
+[1:03:00] settings for moving average uh both 200 200 EMA 200 SMA.
+[1:03:05] So to find liquidity guys it's simple as I said liquidity is money. So, where's the money on the market? [clears throat] Okay. Uh, on this one over here, you
+[1:03:14] need to always ask yourself where's the entry, where's the stop loss, and where's the takerit. So, as you can see over here, the reversal level that we've
+[1:03:22] had over there was a Fib88. So, pretty sure that there's a lot of entries, right? So people entered for example here or here or here and they all put
+[1:03:31] their stop loss at the same place above the highest wick or a bit above for example here you know and then they have
+[1:03:38] to take profit. So this is level that the institution will want to grab before making a move because remember institutions they have billions of
+[1:03:45] dollars they can't just take plenty of trades whenever they want. They have to create liquidity so they can uh fill the
+[1:03:53] entire position that they use for. So right now over here as you can see we have liquidity. Okay. So I circled it in yellow. Let's say before that before
+[1:04:02] we've made a new low. Let's say here we've had another zone of liquidity there which is could be another entry.
+[1:04:09] So now we could have two zones of liquidity. And then once you identify your zone of liquidity you can identify your zone of fib levels that you want to grab. Okay. So let's say here you want
+[1:04:17] to sell. You have fib88 here. You will wait for a grab of this wick before selling. Okay. So let's put it forward after like this.
+[1:04:29] [clears throat] This is your liquidity.
+[1:04:30] You'll wait for a grab. Then once you have the grab, boom, boom, boom.
+[1:04:40] Did it even grab earlier? Okay, there you go. Yeah, we've did grab. Once you've grabbed liquidity, then you can look for it. Okay, so this was fib88
+[1:04:47] over here. But uh now I think we've just grabbed this liquidity here at the top.
+[1:04:52] Yeah, pretty much. Okay, so liquidity guys, let's keep it simple, okay? It's really zones where there's entries,
+[1:04:58] stop-loss, um, and take profit. Okay, so market wants to grab it before doing a reversal. If you want to look for buys
+[1:05:05] right now where the liquidity is
+[1:05:09] [clears throat]
+[1:05:11] what would we say? We would say over here we have entries and stop loss. Over here we have entries and stop loss.
+[1:05:19] It's pretty much the wick that we have in the market. Over here we could have entries and stop loss. Over here could have entries and stop loss. So this is
+[1:05:27] four zones of liquidity. So once you want to look for a trade, you will trace your fib. For example, for buys and you'll check which zone is matching with
+[1:05:36] my liquidity level. Here we have fib 38 match with a lot of liquidity. This is a good level. Uh fib 50, you wouldn't trade it because there's liquidity
+[1:05:43] below. Fib 61 is not bad. Uh but there's no liquidity attached to it. We have 578 with a bit of liquidity over there and
+[1:05:50] 100% always has some. Uh so here the best level possible honestly that would look for as of now if we don't make a higher high on this scandal would be at
+[1:05:58] 4,12 on big FIP 38 um with all the liquidity that we have here. Okay. So
+[1:06:05] liquidity guys is really simple to to find. I can keep on showing you guys level and when I say liquidity sweep is the
+[1:06:14] action of doing it and liquidity grab is the result. Okay. So, what's the liquidity grab? Let's find the one real quick.
+[1:06:24] Let's say this one over here. Okay. So, here we have gold going down.
+[1:06:36] Let's say before here we have gold going down, right?
+[1:06:42] So the market is the market is on FIB 888 over here.
+[1:06:47] We've traced the fib earlier. Gold is going down. What do you want to grab before going back uh down to the downside? So pretty much everyone that
+[1:06:54] entered is for example, let me show you everything about the analysis and and just so you can understand how to catch an entry after.
+[1:07:03] Okay. So we have Fib88 here. You take a sell for example like we did here. stop loss will go above the highest wick,
+[1:07:11] right? This is how pretty much everyone plays their stop loss and take profits whatever. Okay. So,
+[1:07:19] where's our liquidity now? We have Fib88. We have an entries. Our liquidity is where our stop loss is. This is when liquidity will be out of the market.
+[1:07:29] So, before entering, if you're not in yet, you will ask yourself, oops,
+[1:07:36] where's my liquidity? Once we grab it, you can finally enter. Okay. So here, as
+[1:07:44] I said earlier, this is the action of the sweep. So once we sweep this candle, this is called a liquidity sweep. And once we close back below, this is called
+[1:07:52] liquidity grab. So the grab is the result and the sweep is the action that we're taking. Okay? So if you don't know the difference between two, this is it.
+[1:08:01] Now let's say we go back to the chart. We say next candle. Next candle. Boom.
+[1:08:07] We've grabbed the greedy stop loss hit for everyone that entered over here is let's say we put it on the right one.
+[1:08:15] See stop loss hit over there.
+[1:08:19] So now that we've had the grab, you can try to enter a trade. So next candle would be our entry. Normally if a liquidity grab is
+[1:08:28] good, okay, it will give a fast reaction. Most of the time when market is doing a liquidity grab and it's not giving a fast reaction, we just stay
+[1:08:36] there on the same level. I don't personally I don't personally like it.
+[1:08:42] Okay, I'm being honest. If if if we do a grab and market stays on the same level for like 30 minutes, it means that we'll probably grab lower after. So what you
+[1:08:49] want to do what you want to see is a really fast reaction after a grab.
+[1:08:52] Because normally if institution manipulated the price to go grab all this liquidity and we're not going back down fast, it means they they want to
+[1:09:00] grab higher. Okay. So let's see what happens next candles. Okay. Yeah, that was quite fast. Uh I don't think I would have had the time to catch that. Uh
+[1:09:09] we're on M15. Maybe I would on M5, but that was uh yeah, extremely fast over here. Okay. So that's what I want you to understand, guys. Liquidity grab is
+[1:09:17] really simple. You just find level of entries. So available entries you can check for fib 88, fib 61 and wicks. Most
+[1:09:25] of the time liquidity is on these wicks that we have over here because it's entries. Okay. So uh quite simple really. Let me just go back. Um tuck tuck tuck.
+[1:09:37] Let me show you guys a bit more liquidity level. We can identify a lot that are still running. For example, which level are still liquidity?
+[1:09:49] Okay. Okay. So here you would have a lot all of these level here are liquidity
+[1:09:58] these ones see and you can keep it circle on your chart if you want to so you don't forget you know if you want to uh to never
+[1:10:06] forget good trick that I have is just leave it as it is on your chart and for example with this level be a liquidity
+[1:10:12] level guys over here we've made a qu a perfect structure it was on a good level we've had a reaction to the upside. Why
+[1:10:20] would this level not be a liquidity level over here? Why would we not circle that? Why is this not important?
+[1:10:27] Anyone can help.
+[1:10:33] [clears throat]
+[1:10:34] What time frame you on? I'm on M15 right now.
+[1:10:40] Wow, you've opened my eyes. That's the goal. Let's go. I'm happy.
+[1:10:45] Let's go. Let's go. Why would this level here wouldn't be liquidity? right? Already grabbed. There you go.
+[1:10:51] It's already been grabbed. So, if we've made a lower low after a perfect structure that we've had, there's no more liquidity over here because
+[1:10:58] everyone that had a stop loss, sorry, everyone that put a buy here, they put their stop loss at the lowest wick. Sorry, it's not zoomed enough.
+[1:11:09] They've put their stop loss at the lowest wick here and we've grabbed it.
+[1:11:13] So, there's no more liquidity attached to this level. No wicks. The answer is not that it's that there's no wicks.
+[1:11:20] It's just because it's been grabbed. So if you look at the left after we've grabbed this liquidity and now this level over here at the bottom that we haven't grabbed yet becomes the
+[1:11:29] liquidity. So we have this one, this one, this one and this one. So it's really level that we created a structure. We formed entries on a good
+[1:11:37] level and um that never been grabbed after. So it's level that has never been below after. So when you want to look
+[1:11:46] for liquidity level guys, you look for level that has never been grabbed. So once again, this one has it been grabbed
+[1:11:54] since we've been there. And you guys know this level here, right? It it was fib 61. We've formed a perfect structure. Okay. And we went up to the
+[1:12:02] upside. It haven't been grabbed. There's a lot of liquidity over here. And once market come and grab this liquidity, we could have a nice trade. Now this one haven't been grabbed also.
+[1:12:12] And this one have been grabbed also. So this is the equity level that we have at the moment. Okay. So I hope it's clear for all of you guys. Do you draw your
+[1:12:20] fib on 15 minutes time frame? Most of the time. Yeah. Because it's already swept. Exactly.
+[1:12:26] Exactly. Good stuff guys. Okay. So just to recap guys, liquidity level is level where there is stop-loss and take profit
+[1:12:35] because once we touch this level, money is getting out of the market. So institution can eject their money. So if it's a good level of liquidity, once
+[1:12:43] again, it should make a fast move to your direction. If not, it means we'll probably go in higher to grab more liquidity. So this is it.
+[1:12:54] Any questions?
+[1:12:56] How do we know which liquidity to wait for? And guys, don't worry if you're in the trading house, okay, and you don't understand fully what I'm saying.
+[1:13:04] Everything I'm saying right now will say it every single day except uh psychology part. and um fundamentals part but you
+[1:13:12] will hear me say it during the structure because I really wanted to get through your head. Okay. So every single day we'll talk about it and now I'm just
+[1:13:19] showing you like all of them like single but like in the next few days we'll be
+[1:13:27] doing like really example with all of them. So how to take trades and there's going to be a day where it's going to be only about execution. Okay, execution is
+[1:13:35] probably the hardest thing in trading except from psychology. So [snorts] execution is going to be like probably like two three hours only talking about
+[1:13:43] execution and only talking about best price possible only talking about all of this stuff. Okay. So guys be ready.
+[1:13:51] [clears throat]
+[1:13:52] Do you draw your fib on 15 minutes time frame? Yep.
+[1:13:59] If I'm unable to participate in the two trading houses that you'll be teaching over the next three weeks, will they be
+[1:14:06] uploaded to YouTube afterwards? Uh, no, probably not. Is the situation the Kendall 41? Uh, you will take trades. I
+[1:14:14] take trade uh I only take trades on London and New York. So, tomorrow we'll be taking trades together on London only with the members of the trading house and uh that's it.
+[1:14:26] Okay. So, uh, let's get it. Next one. Uh, the next one will go a bit faster.
+[1:14:34] Breaks out. Breakouts. Sorry. I don't use uh I don't trade breakouts personally, guys. I just want to tell I just want to show it to you for those
+[1:14:42] who uh who don't know what that is. Okay. So, breakout [clears throat] is pretty simple. We've been through it earlier.
+[1:14:49] Um, for example, you have fib here.
+[1:14:55] Breakout. We'll go through it fast guys because it's really simple. It's pretty much uh let's say you have a resistance level, okay, which is here. This is a resistance level. It's our 0% from our
+[1:15:04] fib levels. It's the impulse that we've had. Breakout is the action of breaking out the structure that we have. Okay?
+[1:15:10] So, right now, this is a resistance level. We have a highs. We have our fib levels from 100% to zero. Okay? And then
+[1:15:17] once we break this level, it becomes a breakout. So, it's pretty much getting out of a structure. So it's really
+[1:15:24] really simple. Okay. So if you go back after boom boom there you go. We've broke this level. Most of the time when we have a breakout market will go
+[1:15:32] extremely fast to the upside or it will make a fake out and then come back down.
+[1:15:36] But the next one is fake out. I think you guys are good with breakouts guys.
+[1:15:39] It's it's really simple and I don't trade with it personally. I just wanted you guys to know what it is. It's pretty much just breaking a resistance or support level. Um but in my case it's
+[1:15:48] pretty much breaking 0% or 100% from your impulse.
+[1:15:54] Um okay so this is breakouts. Then fake out
+[1:16:01] is something a bit more important over here. Okay. So fake out let me see if I
+[1:16:08] can find one replay leave.
+[1:16:14] Fake out would be do we have one good fake out
+[1:16:27] this this this just want to show a clearer one so you guys can understand like uh I mean there's a lot right now
+[1:16:35] that I see but okay this is not bad this is really not bad actually that's a nice one so here
+[1:16:43] is a level of resistance that we've had for a long time. Okay, so we've had like one reaction, two, three, four, five.
+[1:16:49] This is our first fake out actually. If you want, we can go through uh both of them. Okay, so you see how strong this level is over here, right? Let's replay.
+[1:17:00] So this level over here is becoming strong. It becomes a resistance level.
+[1:17:03] Okay, so we have one tap on it, comes back down. Second tap on it, comes back down. Third tap on it, comes back down.
+[1:17:09] Fourth tap on it, comes back down. And then on the fifth one market decided to break out of it. Now a lot of retail trader trade in a way where they will
+[1:17:17] buy as soon as we'll break out. But this is it is really really really not smart and I'll show you why. Okay. So next
+[1:17:25] candle for example goes here then the next one does that.
+[1:17:30] As a retail you see this and if you trade with emotions or you act emotionally you'll be like oh my god we've broke this level. we're gonna fly.
+[1:17:40] Okay, but it's really not a good way to think about trading. I mean, there's no fib there. There's no psycho level, there's no EMA, SMA, there's nothing
+[1:17:48] literally. So, taking a buy right now once we break this level is purely emotional. So, you shouldn't do that.
+[1:17:55] And knowing what fake out is is important because you don't want to be stuck in that manipulation. And you can actually use fake out on fib levels,
+[1:18:02] okay? Especially on FIB 61. I told you guys earlier that it's uh highly manipulated. So if you want to use it on 261, you can. Okay. So now we've made
+[1:18:11] the breakout. Uh people will start taking buys. But personally, when I see this, I'm more interested in the sales
+[1:18:18] than a buy. Okay. So let's see. Next candle. Oop. Comes back down. What does that show to us? It just shows that
+[1:18:27] we've grabbed liquidity. We've made everyone thinking it's a buy and we reverse. Okay. So retail price comes here. They're like, "Okay, this is my
+[1:18:35] sign. This is a strategy, by the way. I don't know why but this is my sign to enter long stop loss at the breakout and then let's ride
+[1:18:44] but most of the time it will not work it will go back down it's a fake out institution are doing it to trap
+[1:18:50] emotional retail and don't forget that most of the time that we have a strong candle like this okay so this candle is
+[1:18:57] quite strong we've made a huge reaction don't look at the candle and tell yourself oh my god that was so strong you know oh wow market went up I think I
+[1:19:05] should buy oh my don't act emotionally Sorry, just spamming.
+[1:19:15] Sorry, just spamming on this. Don't spam guys in the chat because I really I want to read your question. So when you have an important question, I don't miss it,
+[1:19:22] you know. Um, so yeah, most of the time that institution does a strong impulse. An impulse as you guys remember at first is
+[1:19:31] a strong move that doesn't create a structure. So once institution do a strong impulse. Don't look at what
+[1:19:39] is in front of you. I mean don't look at what you're seeing and just like have your trading idea about it. Okay. What
+[1:19:47] you should do is what you should ask yourself is not oh my god price is going up. What you should ask yourself is why are institution pushing the price that
+[1:19:56] fast to the upside. And there's always something behind it. So when you look at the chart guys don't act emotionally just ask why. Listen to case guys because many of you have FOMO.
+[1:20:06] [laughter]
+[1:20:07] True. [snorts] Okay. So when when institutions are are doing a fast move to the upside, there's always a reason behind it. And over here it could be to
+[1:20:15] grab the greedy. It could be to go to the upside. But on this example over here, it's just to make retail people
+[1:20:22] think that we're about to fly and then reverse. Okay. So this is what they've done over here. On this example, they've done a strong move to the upside.
+[1:20:30] They've put a lot of uh money in the market and then they reversed it in seconds. So retails see this candle, they act emotionally and they're like,
+[1:20:38] "Oh my god, I need to buy now. You open my eyes. Let's go. If I can open all of your eyes, we're going to have 1,600
+[1:20:46] eyes open at the end of this life. Let's go." Okay. So market push to the upside and they really want you to think that we're going in a certain direction.
+[1:20:54] Okay. Our brain is made that way. When we see something really clear, we stop looking elsewhere, right? We spoke about this yesterday. When you're convinced of
+[1:21:02] something, you will be so stuck into the chart that you will forget that it might be the inverse. So, what you need to do
+[1:21:09] here is once you see this, you ask yourself, why are they doing a strong move like this? Why they're pushing the market that much? And if you think about
+[1:21:17] it properly and you wait for the reaction of the next candles, you won't act emotionally. Okay? So, as I said, most of the time, and that's why we always wait for structure. Yeah. Of course, we never act emotionally. Never.
+[1:21:28] Never. Never, never, never. We just take trades when it's when it's stabilized and not because there's a breakout, fake out, um, whatever out, whatever finish without.
+[1:21:39] We don't take a [clears throat] trade on this. Okay, so I hope you guys understand what a fake out is. Fake out is really making the action of going out of a structure and then coming back down
+[1:21:48] below. Okay, so this was a pure fake out. And then uh, did we made another one after?
+[1:21:55] I think we didn't. Did we? We've probably made another one.
+[1:22:07] Oh, here. See another one. So, over here on this. I mean, that was a huge fake out once again, but we've made the same thing. Okay. So,
+[1:22:16] if you want to see after this candle over here, it looks like we're about to fly, right? We've
+[1:22:25] grabbed this liquidity at the left. This was the resistance level. So, our line could be now here. We've grabbed this.
+[1:22:30] We're closed above and we've closed above on M15. The M15 candle closed above. Now, retail traders are like, "Oh my god,
+[1:22:38] we're about to fly. We're about to go to the moon." And I see you guys in the chat sometimes. Oh my god, gold is flying. Oh my god, we're about to go to the moon. But in reality, we just want
+[1:22:46] to grab some liquidity so we can go lower again. [clears throat] I'm very happy because after this 21 days, I'll be cooking with your
+[1:22:53] strategy, Mr. Bill. You will just do the same as Bilal, Calvin, and Billy in the trading house and you'll be killing it.
+[1:23:00] Thanks, Billy, for this master class. My pleasure, bro. My pleasure. My pleasure.
+[1:23:04] Uh, buy high, sell low. [laughter] Um, how do you tell that the huge fake out is the fake out? Well, you wait for
+[1:23:12] the initial reaction after it. Okay, so most of the time, as I said earlier, if we come back down to the downside really fast, uh, it's most of the time because we
+[1:23:21] just grabbed enough liquidity. But if we make a fake out and we stay above, most of the time we'll go back higher. Okay?
+[1:23:27] So if you have a fast reaction to the downside once we've grabbed the liquidity at the left, 90% of the time it's a fake out. And that's what I wait for. So I will wait for one candle.
+[1:23:39] Normally if I [clears throat] want to take a trade on this, I'll wait for one candle that close above and now everyone thinks it's a buy. And then on the second one, I'll wait for reaction back
+[1:23:47] down to the downside. You guys remember the pattern that we've had in trading house? If the scandal closed that way, okay, it indicates me that we've made a
+[1:23:55] fake out to go above. Every retail traders now took a buy and then we came back down really fast, which means we've grabbed enough liquidity to go back down. Then on the third candle, it's
+[1:24:04] your cue to enter a trade. But now, we're not going to talk about when to take a trade or UQ. Uh we'll we'll talk about uh just to keep it simple. Okay.
+[1:24:13] Uh so so guys, on the third candle, you can enter a trade and then we'll have a fast move to the downside. Okay? So this is how I use it and it needs to be
+[1:24:21] matched with a fib level. Okay, right now we haven't checked if there's any fib. We've we didn't check if there's EMA, SMA, psycho level. We didn't check all of these. Okay, so I'm just talking
+[1:24:30] about like uh fake outwise. This is how you could use it for a potential setup.
+[1:24:35] Okay, but I never take a trade without fibs or everything needs to match so it becomes even more valid. But I love fake out. I really love fake out because
+[1:24:44] every retail trader thinks we're going somewhere, but in reality we're not. And if it's matched with other things and I'm more then I'm more confident about my idea.
+[1:24:53] Okay. [clears throat] So is it clear about fake out guys? That was too pretty example I would say.
+[1:24:59] Is it clear about fake out? I think it's pretty clear.
+[1:25:06] [clears throat and cough]
+[1:25:08] Uh these classes for everyone or for only for the VIP. Uh it's for the trading house online. I'll [clears throat] show you at the end if you want to join. It's really simple.
+[1:25:17] uh you sometimes take a break in retest not that is also a common strategy uh break
+[1:25:25] in retest is a strategy but yeah but as I explained yesterday like uh it's not enough if you're only trading break and retest you don't have enough confluence
+[1:25:33] first of all and second of all too many retail traders are trading that way so you shouldn't trade only break and retest
+[1:25:44] is there a way to learn from here if you're going to join this time. Yeah, there'll be other times, bro. Don't worry. Don't worry. Anyway, today is free. Uh I'm doing it for you guys uh on YouTube so you can rewatch it also.
+[1:25:56] But uh anyway, clear for fake out. Let's go. [clears throat] Now, these ones will stand over here. Lot size. It's it's just small things, small terms that I
+[1:26:04] want you to learn. Any of you guys knows uh what lot size is? pretty sure you know what it is because if you've ever traded before, uh for those that never
+[1:26:12] traded before, it's really just the uh [clears throat] the amount of money you enter a trade. Uh on gold, one lot
+[1:26:19] equals 100 ounce of gold. So, anyone in the chat knows uh how much is one lot worth? Maybe some of
+[1:26:28] you don't know. For those who watch the trading house, uh, you know it. But if it's your first time here, do you guys
+[1:26:34] know how much dollars one lot on gold is? [clears throat] Try to answer.
+[1:26:46] Asia, Billy, Asia, [clears throat and cough] opening soon.
+[1:26:49] It's It's 12:45 a.m. right now over here. 100. How much? How much dollars?
+[1:27:00] [snorts] How much? How much dollar is uh is one lot on gold? 100. $100 is one lot.
+[1:27:08] You think you need $100 to trade with one lot without leverage, right? 10 10 10 guys. [laughter]
+[1:27:16] One lot on gold is not $10. Is not 15k 1 ounce. No, it's 100 ounce of gold.
+[1:27:27] We only know 18 lots, not one.
+[1:27:29] [laughter] I trade 18 lots. Yeah. But look, one lots on gold equals 100 ounce of gold, which means 100 ounce times
+[1:27:38] current gold price, which is 4,139, which mean one lot equals 400,1
+[1:27:46] 410, and uh $40. So, $414,000 right now, but around 400k pretty much.
+[1:27:57] [clears throat] Okay. So, this is just like for you guys to know if if you if you didn't know, well, now you know that one lot is worth $414,000.
+[1:28:09] The price of one Oz, one ounce is 4,140 gold price.
+[1:28:16] Now, pips.
+[1:28:18] I'm sure you've heard me say pip a lot of time. Some of you smoke weed, [laughter] I think. So, I'm sure you've
+[1:28:26] heard me uh say pips a lot of time in your life. Pips. Pips. Pips. Uh one pips, okay, is 10 cents on gold. And 10
+[1:28:35] pips, we always use like 10 pips is $1 on gold. Okay? So, every time gold is moving by $1, it's moving by 10 pip. So
+[1:28:44] I just want to tell you because I will use these term a lot in the next 21 days and I would feel bad if uh if you don't know what I'm talking about. So
+[1:28:53] [clears throat] 10 pips $1 on gold. So if gold is moving from 4,000 to 401
+[1:29:00] gold price just moved by 10 pips. So this is it. This is how we say it pretty much here. Now leverage okay I'm pretty
+[1:29:08] sure you all know what leverage is. is pretty much using uh an effect of in French I say
+[1:29:16] levier um in English it's pretty much leverage using effect of leverage to open
+[1:29:23] position with bigger capital so for example you have 100 of leverage if you trade with $1,000 you will have $1,000
+[1:29:31] times a thou 100 which equals to $100,000 so if you use a 100 of leverage
+[1:29:38] for a th000 you'll will have $100,000 to open a position with. Now, you should all be cautious cuz this
+[1:29:45] could be more dangerous, right? It looks nice to just have leverage so you can open bigger positions and you feel like you're a millionaire, but you're not.
+[1:29:52] Okay? You need to be cautious. Don't uh use too much leverage. If I was you guys, uh you can use 1 to 30. I have 1 to 30 on my live account and I don't
+[1:30:00] need more. So, if you need more than that, it's probably because you're opening with too many lots. Okay?
+[1:30:09] How much leverage you using? Yeah. Yeah.
+[1:30:10] 1 to 30 personally. And I don't think I'm using the full 30. Like probably like 20.
+[1:30:16] So I think it's a good amount of leverage you can use. Um now I'm saying if you're on your broker that you use, you can leave it as it is. You don't
+[1:30:24] have to change it. But I'm talking about position wise. Now you know one what one lot on gold is. And you know about your leverage 1 to 30 is perfect. Yeah.
+[1:30:33] Raises 1 to 500. Yeah. Yeah. But uh I I I could use 1 to 1,000. It doesn't change. I will not change my positions.
+[1:30:39] You know, if I have 1 to 10,000 leverage and I trade with lots with the amount of money that I have, I'm just using 1 to 20. So I would say guys, keep it to uh 1
+[1:30:48] to 30. How do you set leverage? You don't have to set it. You can have uh 1 to 500 leverage. I'm just talking about the amount of money you're using.
+[1:31:00] Okay? So, for example, if you have $400,000 on your live account and you're opening one lot on gold, you're not
+[1:31:07] using any leverage. You're at one to one, you know, and if you have, for example, um,
+[1:31:14] let's say it's a smaller number, $40,000 on your live account and you're using one lot, you're using one to 10 of leverage. You understand?
+[1:31:25] You don't have to change the leverage, guys.
+[1:31:28] [clears throat and cough]
+[1:31:28] Every broker has a maximum of either 500 leverage, 1,000 or 250. So you decide
+[1:31:37] after what you want to do with it. Now support and resistance, we've talked about it earlier already. Okay, so I've been through it already. And now the last one I will check is trend line.
+[1:31:45] Okay, so trend line is I don't use it really often. You guys know me for those that trade live with
+[1:31:51] me. Uh I don't use trend line a lot because too many retail are using it.
+[1:31:56] But if it's on my level and it matches with everything I'm looking at, it's just an extra confluence, right? Just
+[1:32:03] like EMA, SMA. Uh to trade to trace a trend line, you can just find your level of liquidity. So your
+[1:32:11] bottom that has never been test uh uh swept before and you trace it. Okay.
+[1:32:17] Okay. So over here I don't personally I don't really mind about going like in the trend line and not being exact
+[1:32:23] extremely like uh precise. I don't mind about being precise personally. Uh so for here for example before this over
+[1:32:32] there this would have been an extra confluence for me with the trend line.
+[1:32:36] Okay. So let's say I put my fib from this bottom till the highs. we would have had a retest on fib 38 which
+[1:32:45] touched perfectly the trend line and then uh another retest over here and then we would have go back up or down whatever I don't know what happened
+[1:32:52] after but uh this is the way I use it okay so to trace a trend line you just find your liquidity level or your your low that you have on the market and
+[1:33:00] every time we have a test on it you can trace it I always trace my trend line after two lines as soon as we have two lows I'll trace it and I'll look for the
+[1:33:07] third one and fourth one normally uh the fifth one on the retest I don't really like So if you want to take your trade, I would say like on the third retest or
+[1:33:14] fourth one of your trend line, it's always like the best. Okay. So it can work in both way. Uh even for sales for example, we have it from here.
+[1:33:24] We could use like it's not the cleanest one, but um whatever. Maybe we have some more there.
+[1:33:31] Don't over complicate it, guys, for trend line. Like uh it doesn't have to be really perfect in my opinion. Okay, so even here it can just help you. It's
+[1:33:38] really just an extra confluence to help you uh can retrace it from this low. I would more use it over here
+[1:33:49] like that. This one is pretty clean.
+[1:33:53] So this could be a nice trend line. You know, it just helps you when you have a fib levels. It's just an extra confluence that you can use. So when you trace your fib from this low for example
+[1:34:00] till the highs over here we've had fib 61 we've had liquidity levels we've had EMA SMA and we've had a structure you
+[1:34:08] know so this becomes like a really nice level to buy you know so it's just now we have like more confluence fib levels
+[1:34:15] fib 61 we've grabbed on FIB 71 moving average and we have a trend line passing by so it just makes the trade more valid
+[1:34:24] pretty uh 100k [clears throat] you guys are still saying about the lot size. Okay,
+[1:34:34] so uh this is pretty much it guys for today's classes. Any question about anything we've saw today guys, it'll be my pleasure to answer. Uh if I can
+[1:34:42] remember you guys uh tomorrow we'll be live for the trading house uh online on on London. I'm sure a lot of you guys uh
+[1:34:49] I don't maybe maybe everyone on live right now is already part of the trading house online. If you're not, uh, you can join us right now. Okay? So, it's quite
+[1:34:57] simple. Just, uh, scan this QR code and go to bill's line richi.com and you'll be able to join us. Uh, once again, you
+[1:35:05] just have to do your deposit of $1,000 on raise and then you'll be in. Okay.
+[1:35:09] So, this is it. And, uh, tomorrow we'll be live for London altogether, guys. uh for those who are part of the trading house online only
+[1:35:17] and uh and then we'll be live at night giving away Rolex. Um
+[1:35:26] this is it for uh theory session number two. Sorry. So tomorrow we have our theory session number two. My planning
+[1:35:34] is already ready and everything we've went through today guys. I hope that it helped you. Uh we will uh we will go through again and again again. Okay?
+[1:35:42] Okay. So, until you're done, we will go through again. Where can we find that PDF? I lost that part. The PDF about everything we've learned today is in the
+[1:35:49] group on Telegram. So, if you're not part of it already, just text me on Telegram. Hey, I'm not part of the Trading House official group.
+[1:35:57] Let me just go in it. You'll see it's all on on Telegram over here.
+[1:36:04] My checklist, as you can see.
+[1:36:13] So here my checklist let me just add you for those who just joined my checklist is there okay so you can
+[1:36:22] see it on telegram just go a bit up and you will see uh the PDF so you have like the starter kit it says you know the trading checklist it's all
+[1:36:31] there okay so it's a PDF um as I said if you haven't joined yet uh the trading house online guys just send me a text on
+[1:36:38] on telegram and you'll be able to join us. It's still open. You haven't missed anything yet. You haven't missed anything. If you join today, I think uh it's the best decision. We'll do live
+[1:36:46] like this every single day uh all together with the trading house. I hope it helps guys. I hope it helps. Wait,
+[1:36:55] how can you win the Rolex? You'll send the trend you took to you. Uh yeah, to win the Rolex, guys, I'll make it really simple. Uh first of all, you need to be
+[1:37:03] part of the trading house online. Okay, so you need to register to register to the trading house online. Once again, it's uh
+[1:37:14] it's here. Scanner, go to bills richie.com. So, you go on Google. Okay.
+[1:37:22] Billsrichy.com.
+[1:37:26] Then you'll be taken to this page over here, 21 days trading alongside bills.
+[1:37:30] You enter your information and at the end you just open my trading account and then you will be able to uh to do your
+[1:37:37] deposit to trade with us. Okay? So you deposit a,000 and then uh it's your own money. You do whatever you want with it.
+[1:37:44] It's your own money to trade with during those 21 days and we'll have a leaderboard with the challenge with everyone. Okay? So uh it's really simple if you wanted to join us.
+[1:37:54] As I said here, the money stays yours.
+[1:37:57] [clears throat] Okay? So uh so this is it. This is how this is the first step to win the Rolex. The second step is take a valid trade with my checklist.
+[1:38:05] Okay? And you guys have my checklist on the group once you join. Uh you just take a valid trade. I will check tomorrow night before. By the way, I
+[1:38:13] will give the Rolex tomorrow night. U those who are not in the live is this Rolex over here over there. And I'll
+[1:38:20] give it tomorrow night um during the theory session number two. The checklist, bro, isn't there, guys.
+[1:38:29] Uh, I'm talking to people that join the official group. So, if you're not part of this group over here,
+[1:38:37] for sure you're not going to see it. For those that train, guys, for for those that trade that joined the trading house online, the official group, can you see it?
+[1:38:46] For those that uh that made the deposit, that did everything, can you see it?
+[1:39:06] Uh yeah, we can see. Yes, it's there, bro. Yes, it's there. Okay.
+[1:39:13] Okay. I'm talking about people who who joined the trading house. Like if you've joined us on Telegram, uh you should see it.
+[1:39:23] So yeah, this is it. Um, so yeah, this is it.
+[1:39:32] Any Canadian who can deposit with no problem? Yeah, you're Canadian. No problem. You can deposit. Um, tomorrow we'll have someone with me. Okay, I
+[1:39:39] found uh I found someone earlier uh that joined the trading house online and
+[1:39:47] his name is telling me something. So, uh, he'll be with me tomorrow
+[1:39:56] all day. And yeah, someone joined, uh, someone decided to join the, to be honest, it's really simple. Someone decided to join the trading house online
+[1:40:03] and I just picked him and tomorrow he's coming to Dubai, sitting with me. If it's you in the chat, I've text you
+[1:40:12] already, waiting for an answer, but if it's you, I'll just say your name right now.
+[1:40:21] Matt with his family name. Let me check. Matthew James03.
+[1:40:30] If it's you uh on Telegram, I texted you waiting for an answer. Uh you're going to come to Dubai tomorrow if you'd like
+[1:40:39] to. Okay. So, Matthew James.03, you're uh you're coming to Dubai tomorrow to trade with me on my side.
+[1:40:48] And guys, we'll be live on London only with the members of the training house and like he'll be with us. So I'll try
+[1:40:55] to teach him as much as possible like I've teach Bilal, like I've teach Calvin, like I've teach everyone. So uh
+[1:41:02] if it's you, congrats. Come to Dubai and uh let's get
+[1:41:10] What is the official group? The the group on Telegram uh where all the members are is like this. It's called
+[1:41:17] Trading House online official group. If you're not part of this group on Telegram, it means you haven't joined the Trading House live yet and tomorrow
+[1:41:24] you won't be part of the sessions number two. Okay, so it looks like this. If you're not part of this group on Telegram, uh you're not part of it. As
+[1:41:33] you can see in the bottom, we have media. The starter kit here [snorts] is all in the bottom. So yeah.
+[1:41:44] Okay. Okay, let me check your comment, guys.
+[1:41:48] What if he's scared of flying? Well, I'll choose another one. But I've made 10,00k deposit but supports 1k deposit but I changed partners but don't
+[1:41:56] remember doing that. Can you help me change back?
+[1:42:02] Oh, you've changed partners. I think it's better you check with support, bro.
+[1:42:06] If you tell them that you are changing, you can change partners.
+[1:42:10] Uh, what is the difference between VIP and diamond? Um, diamond you have more of a I would say diamond is more for people that are looking to trade for the
+[1:42:19] long run. We're learning more. We have zoom calls. We have a lot of sections in diamond and you're part of like a community, you know. You can all talk
+[1:42:26] with each other taking trades. Uh, it's like a family, you know, so it's different. I've only deposited 1,000 uh pounds. Is my money lost? It's not lost,
+[1:42:35] bro. It's still there. You can still trade, but 1,000 is what uh is required for the trading house online. We're all starting with the the same.
+[1:42:45] [snorts]
+[1:42:50] Who's not in the trading house online guys? And that will be tomorrow for theory number two. Anyone of you will join tonight or tomorrow morning so we
+[1:42:59] can all be part of the trading house theory number two tomorrow night. Can't wait.
+[1:43:06] I can't wait cuz you know I'm talking right now about all these stuff but uh I really want to talk more about it but I want to go
+[1:43:13] slowly so that people don't like so that's not too much information at once you know
+[1:43:22] me. Okay, me. Let's go. I'm in VIP about 10 months. I want to join your training house. Okay, perfect. Yes, me.
+[1:43:35] Me. Okay, people are spamming.
+[1:43:40] Man, I've been obsessed with you for weeks. Why didn't you choose me? I don't know, bro. I just chose someone. I just chose someone. I will be there tomorrow.
+[1:43:48] Let's go, bro. Bro, how do we join the official? It's simple, bro. Just uh just go on Google, okay? And you type
+[1:43:55] billslinerichy.com and then after this me me let's go. I'm having trouble to join. Just text the support on Telegram. We have less text
+[1:44:03] right now. Everything will be fixed. I'm not going to bed unless uh until everyone is in the group. Okay. Tomorrow we're really it's going to be our first official day trading.
+[1:44:12] I want to learn a lot more. Yeah. Join us. Are we taking trades tomorrow? We're taking trades with the trading house online people on London.
+[1:44:20] Um, I will join tonight. Will I be in VIP for a year or 21 uh days? Um,
+[1:44:29] to be honest, I didn't really like the 21 days in the VIP group. So, as of now,
+[1:44:37] there's no one that joined the trading house online that will be in VIP for 21 days. Uh, everyone in the trading house
+[1:44:44] online will be in VIP for a year. So, so yeah, if you join us tonight for the training house online, you will be in
+[1:44:52] the VIP group for a whole year. So, don't worry about 21 days. I didn't really like my team did that.
+[1:45:01] They're saying I have wrong affiliate code, but I deposit,000. Uh, then just text the support real quick and say that you want to be affiliated with me and you'll be okay.
+[1:45:11] Say you want to be part of the trading house online and the support of Raise Effects will understand clearly
+[1:45:19] why would I deposit with Raise um but to be honest it's a really good broker. We have uh 6,000 members in the
+[1:45:26] VIP group that are using this broker. We have 6,000 members and I've never had a problem with them and we've made like
+[1:45:34] what 2.7 million that I said yesterday of withdraw on raise 2.7 million in withdraw only this year and never had
+[1:45:44] any problems. So you know um uh support is asking me to take two
+[1:45:52] trades uh get VIP verify this before I proceed. Yeah, not a problem, bro.
+[1:45:59] Will you send a single inv? Yeah, probably.
+[1:46:06] Can you give back one year access to the VIP yesterday? None of the payment method were working. Yeah, as I said, if you join us tonight, guys, uh for the trading house online, so you can be with
+[1:46:14] us tomorrow, uh you will be in VIP for one year. So, don't worry about this. I will not remove you from VIP after 21 days. You have my word.
+[1:46:29] So, if you didn't receive your access to the trading house online, which I'm saying the group on Telegram, there's a group on Telegram called the Trading House online official group, which is
+[1:46:38] the people that registered and made the step to join. Uh, if you're not part of it yet, contact me on Telegram, okay?
+[1:46:44] So, text me on Telegram. You know my name, Bill Support. Send me a text and then you'll be in. Okay?
+[1:46:52] So this is it.
+[1:46:57] [clears throat]
+[1:47:06] Why 1,000? Why not 500? Uh um the reason is because I started with $1,000. So
+[1:47:16] since I'm doing like a pretty much a showun of what I've done to start uh we've made a thousand so that
+[1:47:24] everyone starts there and just feel like I wanted to be surrounded by people who are serious. You know I think a thousands dollars uh deposit on
+[1:47:32] your trading account is a good amount to start. That's just what I thought
+[1:47:41] and I think the lesson that you will learn during those 21 days is is really valuable. So,
+[1:47:48] so 10,000 is good. There's trading house online and trading house official.
+[1:47:53] Trading House online group is just the public one with 24,000 subscribers and Trading House online official is the group of people who joined and
+[1:48:01] registered through raise so they can be part of the leaderboard and in the group
+[1:48:16] waiting for diamond group. Let's go. Let's go. Let's go. Let's go. Let's go.
+[1:48:23] Let me add you guys on Telegram.
+[1:48:27] If you haven't joined Telegram yet, it's in the description of the of the live right now. So, you can see
+[1:48:36] [clears throat]
+[1:48:53] Okay.
+[1:48:58] Okay. There you go. Uh if you don't have any other question guys, sorry. Uh I don't want to waste your time. Uh if you don't have any other question guys, I will see you tomorrow. Okay. So for
+[1:49:06] those who didn't join the trading house yet, uh I'll see you uh uh I'll I'll answer your text right now so you can be in before uh London. So, tomorrow live
+[1:49:15] tomorrow guys at 12 uh p.m. exactly I'll be live for London with you guys of the trading house and then we'll be live on
+[1:49:22] New York all together and then we'll be live once again for the number two.
+[1:49:27] Okay, so be ready. I hope you took some notes. Uh we'll send you the recording guys at the end of this live in the group so you can watch it again but
+[1:49:35] it'll be on YouTube this one anyway. So uh you can check on YouTube but we'll still send you the recording. Okay, so uh take it easy guys. I hope you learned a lot today.
+[1:49:44] Did you guys like the first theory session? I know it's not honestly I'm not pushing it. I'm really not pushing it. I'm really showing you the basics.
+[1:49:52] Okay, so today was really more basics.
+[1:49:53] We'll go through it in detail a lot. Uh we'll talk about institutions, about psychology a lot. We'll talk about a lot of stuff, but uh today really it really
+[1:50:02] was just uh it was just basics. So yeah, love you Habibi. Love you too, Habibi.
+[1:50:10] I scann the QR code, but my deposit was in the bowl. Yeah, just uh contact support, bro. Of course, bro. Let's go, man. Good course, Tankulu. Thank you. It
+[1:50:20] was very good. Thank you, bro. I'm happy you guys liked it. Uh if there's anything you want me to fix or change or that could help you more, you text me on Telegram. I'll I'm open to any opinion.
+[1:50:31] Okay. So, uh so yeah, and tomorrow will be only the one that's uh that joined the training house online. So, uh, it'll be more private, you know. Thank you.
+[1:50:40] I've learned a lot. Uh, no problem, bro. Learned a lot, but need time to digest.
+[1:50:46] Absolutely, bro. Absolutely. That's why you can take some notes and you can watch it a bit later. And everything you've saw today, even if you don't
+[1:50:54] understand it 100% of it, uh, will see it every day. So, yeah. Thank you, Bills. God bless you. God bless you, bro.
+[1:51:05] You would have made a good teacher if you were not a trader. Yeah. You think so? In school? A little math class. I'm trying to to be clear. I'm trying not to be too fast for you guys.
+[1:51:18] I joined the trading house now. Let's go. We'll come in, bro. If you uh if you just joined the training house, guys, you'll be in with us for tomorrow's
+[1:51:25] live. Okay. So, don't worry. Meet up tomorrow. Thanks for your time.
+[1:51:28] Absolutely. Yeah. We'll see you tomorrow. Yes. I like it. I love it.
+[1:51:31] Thank you, bro. I appreciate you. some really good stuff. Thank you, bro. Thank you. Thank you. Thank you. Okay, guys. I will close the live. I'll see you tomorrow in London. I'll take some rest
+[1:51:39] now. It's 1:00 a.m. here. So, I'll try to take a bit of sleep. The last four days has been quite intense. So, uh I'll
+[1:51:47] get some uh some time to rest and I'll see you tomorrow, guys. Let's kill the market tomorrow. Today was not uh today
+[1:51:54] honestly was really complicated the tech team to put everyone in. I'm sorry for those who had delay, but tomorrow, let's kill it.
+[1:52:02] Thank you, Bill. Great teaching. Thank you, bro. Appreciate it. Okay, guys. I'll see you tomorrow. Stay safe, guys.

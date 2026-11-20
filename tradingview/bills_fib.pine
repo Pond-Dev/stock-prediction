@@ -1,0 +1,842 @@
+//@version=6
+indicator("Bills Fib ★", shorttitle = "Bills Fib", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+max_bars_back(time, 5000)
+
+string G1 = "แสดงผล"
+string G2 = "Fib"
+string G3 = "★ นับ confluence"
+string G4 = "🤖 ค่าที่ AI ตั้งเอง (คลิปไม่มีตัวเลข)"
+
+bool showSmall = input.bool(true, "① Fib เล็ก (TF กราฟ)", group = G1, tooltip = "ลากซ้าย → ขวา จากก้นก่อน impulse (100%) ถึงยอด (0%)\nทำยอดใหม่ = ย้าย 0% · ย่อแล้วขึ้นคลื่นใหม่ = เริ่ม Fib ใหม่จากก้นย่อ\nที่มา: bills §3, §14 (นาที 11–13, 36, 47)")
+bool showBig = input.bool(true, "② Fib ใหญ่ (TF ใหญ่)", group = G1, tooltip = "ลากจากก้นสุดของ impulse ใหญ่ · ทำยอดใหม่ = ย้ายแค่ 0%\nที่มา: bills §14 (นาที 47)")
+string bigTfIn = input.string("อัตโนมัติ", "TF ของ Fib ใหญ่", options = ["อัตโนมัติ", "5", "15", "60", "240", "D"], group = G1, tooltip = "อัตโนมัติ: M1–M5 → M15 · M15 → 1H · 1H → 4H · 4H → Day\nคลิป: วิเคราะห์ M5 / M15 / 1H · ลาก Fib ดีสุดที่ M15 (§14)")
+bool showMa = input.bool(true, "③ EMA 200 + SMA 200", group = G1, tooltip = "ใช้เป็นแนวรับแนวต้าน + confluence เสริม ไม่ใช่ตัวบอกเทรนด์\nที่มา: bills §16 (นาที 53–1:00)")
+bool showLiq = input.bool(true, "④ Liquidity (ไส้ที่ยังไม่โดนกวาด)", group = G1, tooltip = "ไส้ของยอด / ก้นที่ราคายังไม่กลับไปถึง · โดนกวาดแล้วลบทิ้ง\nที่มา: bills §17 (นาที 1:02–1:12)")
+bool showEvt = input.bool(true, "⑤ Grab · Fakeout · ไปต่อ", group = G1, tooltip = "Grab = ไส้กวาด liquidity แล้วปิดกลับ → เร็ว / นิ่ง\nFakeout = ปิดทะลุแล้วกลับเข้ามา · ไปต่อ = ทะลุแล้วยืนได้\nที่มา: bills §18–§20")
+bool showStr = input.bool(true, "⑥ Structure (ราคาสะสมบนระดับ)", group = G1, tooltip = "ราคาสะสมแคบ ๆ ทับเส้น Fib · คลิปดูบน M5 รอ 4–5 แท่ง\nที่มา: bills §12 (นาที 26, 31, 34)")
+bool showTl = input.bool(true, "⑦ Trend line", group = G1, tooltip = "ลากผ่าน 2 ก้น (หรือ 2 ยอด) แล้วนับครั้งที่แตะ · ครั้งที่ 3–4 ดีสุด · ครั้งที่ 5 คลิปไม่ชอบ\nที่มา: bills §21 (นาที 1:31–1:34)")
+bool showStar = input.bool(true, "⑧ ★ นับ confluence", group = G1, tooltip = "★n = มี structure บนระดับ Fib และ confluence ครบขั้นต่ำ\n☆n = ครบแต่ผิดเงื่อนไขของระดับนั้น\nชี้ที่ป้ายเพื่อดูทีละข้อ · จุดเข้าดูป้าย Buy / Sell (⑩)")
+bool showPanel = input.bool(true, "⑨ แผงสรุป", group = G1)
+string panelPos = input.string("ขวาล่าง", "ตำแหน่งแผง", options = ["ขวาบน", "ขวากลาง", "ขวาล่าง", "ซ้ายบน", "ซ้ายล่าง"], group = G1)
+string uiSize = input.string("กลาง", "ขนาดตัวอักษร", options = ["เล็ก", "กลาง", "ใหญ่"], group = G1)
+
+bool show118 = input.bool(false, "แสดง 118%", group = G2, tooltip = "เห็นบนจอในคลิป แต่ไม่ได้พูดถึง")
+bool showBand = input.bool(true, "แถบระดับโปรด 61.8–88.6", group = G2, tooltip = "คลิปทำเส้น 61–88 เป็นสีขาว = ตัวโปรด (§3)")
+
+int minConf = input.int(3, "ขั้นต่ำ confluence (รวม Fib)", minval = 2, maxval = 9, group = G3, tooltip = "คลิป: confluence เดียวไม่ใช่ confirmation ต้องตรงหลายอย่าง (§13)\nเลข 3 = AI ตั้ง")
+bool usePsy = input.bool(true, "นับเลขกลมเป็น psychological level", group = G3, tooltip = "คลิปพูดชื่อ psychological level แต่ไม่อธิบาย · AI ใช้เลขกลมแทน")
+
+string G5 = "⑩ จุดเข้า · SL · TP (AI ตีความจากตัวอย่างในคลิป)"
+bool showTrade = input.bool(true, "แสดงจุดเข้า · SL · TP", group = G5, tooltip = "กล่องเขียว = TP · กล่องแดง = SL · ป้ายผลเมื่อปิดไม้\nคลิปยังไม่ได้สอนวิธีเข้าเต็ม ๆ (บอกว่าจะสอนวันหลัง นาที 32:09, 43:51, 1:13:27) · กติกานี้ AI แปลงจากตัวอย่าง")
+bool useStar = input.bool(true, "เข้าที่ ★ (structure บนระดับ Fib)", group = G5, tooltip = "เข้าที่ราคาปิดของแท่งที่ขึ้น ★\nคลิป: เข้าตอน structure จบ (21:06–21:15) · Fib 61 เข้าแท่งที่ 3 (30:32) · Fib 88 แท่งที่ 2–3 (36:30)\nSL: เลยไส้สุดของกรอบ structure")
+bool useGrab = input.bool(true, "เข้าหลัง Grab ที่ระดับ Fib", group = G5, tooltip = "แท่ง grab ปิดกลับ → เข้าที่ราคาปิดแท่งนั้น (= เปิดแท่งถัดไป)\nคลิป: grab เสร็จ แท่งถัดไปคือจุดเข้า (1:08:19)\nต้องเกิดที่ระดับ Fib และ confluence ครบขั้นต่ำ · SL: เลยไส้แท่ง grab")
+bool useFake = input.bool(true, "เข้าหลัง Fakeout ที่ระดับ Fib", group = G5, tooltip = "แท่ง 1 ปิดทะลุ → แท่ง 2 กลับเข้ามา → เข้าที่ราคาปิดแท่ง 2 (= เปิดแท่ง 3)\nคลิป: แท่งที่ 3 คือจังหวะเข้า (1:23:39–1:24:13)\nต้องเกิดที่ระดับ Fib และ confluence ครบขั้นต่ำ · SL: เลยไส้สุดของ fakeout")
+float minRR = input.float(1.0, "RR ขั้นต่ำ (TP ไกลอย่างน้อยกี่เท่าของ SL)", minval = 0.5, step = 0.5, group = G5, tooltip = "TP = liquidity (หรือ Fib 0%) ที่ใกล้ที่สุดที่ให้ RR ถึงขั้นต่ำ · ไม่มี = ไม่เข้า\nคลิป: Bills ไม่รับต่ำกว่า 1:8 (39:17–39:56) · ใส่ 8 ถ้าจะใช้ตามคลิป · 1 = AI ตั้ง")
+bool useSess = input.bool(false, "เข้าเฉพาะช่วง London / New York", group = G5, tooltip = "คลิป: Bills เทรดเฉพาะ London กับ New York (1:14:14)")
+string sessStr = input.session("1400-0200", "ช่วงเวลา (เวลาไทย)", group = G5, tooltip = "ค่าเริ่ม = AI ตั้ง: London เปิด ~14:00 ถึง New York ~02:00 เวลาไทย")
+
+int swLen = input.int(5, "ความยาว swing ของ Fib เล็ก (แท่งต่อข้าง)", minval = 2, maxval = 30, group = G4)
+int bigLen = input.int(5, "ความยาว swing ของ Fib ใหญ่", minval = 2, maxval = 30, group = G4)
+float minImp = input.float(4.0, "impulse ขั้นต่ำ (เท่าของ ATR)", minval = 0.5, step = 0.5, group = G4, tooltip = "Fib เล็กที่สั้นกว่านี้ไม่แสดงและไม่นับ")
+float tolAtr = input.float(0.25, "ระยะที่ถือว่าตรงกัน (เท่าของ ATR)", minval = 0.05, step = 0.05, group = G4)
+int liqLen = input.int(3, "ความยาว swing ของ liquidity", minval = 1, maxval = 20, group = G4)
+int liqMax = input.int(3, "liquidity ที่แสดงต่อฝั่ง", minval = 1, maxval = 10, group = G4)
+int stBars = input.int(4, "structure: จำนวนแท่ง", minval = 3, maxval = 10, group = G4, tooltip = "คลิป: 4–5 แท่ง บางที 3–4 (§12) · Fib 88 ใช้ 2 แท่งได้ (§10)")
+float stRng = input.float(1.5, "structure: กรอบกว้างสุด (เท่าของ ATR)", minval = 0.3, step = 0.1, group = G4)
+int fkBars = input.int(2, "fakeout: ต้องกลับเข้ามาภายใน (แท่ง)", minval = 1, maxval = 5, group = G4)
+int fastBars = input.int(3, "grab เร็ว: ภายใน (แท่ง)", minval = 1, maxval = 10, group = G4)
+float fastAtr = input.float(1.0, "grab เร็ว: วิ่งออกจากระดับ (เท่าของ ATR)", minval = 0.2, step = 0.1, group = G4)
+int stallMin = input.int(30, "grab นิ่ง: นาที", minval = 5, group = G4, tooltip = "คลิป: grab แล้วนิ่งอยู่ระดับเดิมราว 30 นาที มักไป grab ต่อ (§18)")
+float strongImp = input.float(8.0, "Fib 23: impulse แรง (เท่าของ ATR)", minval = 1, step = 0.5, group = G4, tooltip = "คลิป: ใช้ 23 เฉพาะตอน momentum แรง (§4)")
+float psyStep = input.float(0, "ระยะเลขกลม (0 = อัตโนมัติ)", minval = 0, group = G4, tooltip = "0 = ตามขนาดราคา: ทอง ~4,000 → ทุก 50 · BTC ~64,000 → ทุก 500")
+float slBuf = input.float(0.1, "SL: เลยไส้ไปอีก (เท่าของ ATR)", minval = 0, step = 0.05, group = G4)
+float minRisk = input.float(0.3, "SL: ระยะขั้นต่ำ (เท่าของ ATR)", minval = 0.1, step = 0.1, group = G4)
+int maxHold = input.int(48, "ปิดไม้เองถ้าไม่ถึง SL / TP (แท่ง)", minval = 5, maxval = 500, group = G4)
+
+color cFg = chart.fg_color
+color cBg = chart.bg_color
+color cLvl = color.new(cFg, 60)
+color cFav = color.new(cFg, 15)
+color cBand = color.new(cFg, 93)
+color cMute = color.new(cFg, 40)
+color cBig = #2962FF
+color cEma = #F23645
+color cSma = color.new(cFg, 10)
+color cUp = #089981
+color cDn = #F23645
+color cGold = #FF9800
+
+string SZ = uiSize == "เล็ก" ? size.small : uiSize == "ใหญ่" ? size.large : size.normal
+string SZS = uiSize == "ใหญ่" ? size.normal : size.small
+
+float atr = ta.atr(14)
+float tol = tolAtr * atr
+float ema200 = ta.ema(close, 200)
+float sma200 = ta.sma(close, 200)
+plot(showMa ? ema200 : na, "EMA 200", cEma, 2)
+plot(showMa ? sma200 : na, "SMA 200", cSma, 2)
+
+var array<float> RL = array.from(0.236, 0.382, 0.5, 0.618, 0.65, 0.71, 0.786, 0.886)
+var array<string> RN = array.from("23.6", "38.2", "50", "61.8", "65", "71", "78.6", "88.6")
+var array<float> DL = array.from(0.0, 0.236, 0.382, 0.5, 0.618, 0.65, 0.71, 0.786, 0.886, 1.0, 1.18)
+var array<string> DN = array.from("0", "23.6", "38.2", "50", "61.8", "65", "71", "78.6", "88.6", "100", "118")
+
+f_lv(float a, float b, float r) =>
+    b - r * (b - a)
+
+f_step(float p) =>
+    float m = math.pow(10, math.floor(math.log10(math.max(p, 0.0001))))
+    m / 20
+
+f_d(bool b) =>
+    b ? "● " : "○ "
+
+f_tfName(string tf) =>
+    string out = tf
+    if tf == "D" or tf == "1D"
+        out := "Day"
+    else if tf == "W" or tf == "1W"
+        out := "Week"
+    else
+        float m = str.tonumber(tf)
+        if not na(m)
+            out := m >= 60 ? "H" + str.tostring(m / 60) : "M" + tf
+    out
+
+f_fib(int len, bool newWave) =>
+    var int dir = 0
+    var float aP = na
+    var int aT = na
+    var float bP = na
+    var int bT = na
+    var float lpl = na
+    var int lplT = na
+    var float lph = na
+    var int lphT = na
+    var float ext = na
+    var int extT = na
+    var bool pull = false
+    float ph = ta.pivothigh(high, len, len)
+    float pl = ta.pivotlow(low, len, len)
+    int pt = time[len]
+    if not na(pl)
+        lpl := pl
+        lplT := pt
+        if dir == 1 and pt > bT
+            pull := true
+    if not na(ph)
+        lph := ph
+        lphT := pt
+        if dir == -1 and pt > bT
+            pull := true
+    if dir == 0
+        if not na(lpl) and not na(lph)
+            if lphT > lplT
+                dir := 1
+                aP := lpl
+                aT := lplT
+                bP := lph
+                bT := lphT
+            else
+                dir := -1
+                aP := lph
+                aT := lphT
+                bP := lpl
+                bT := lplT
+            ext := na
+            extT := na
+            pull := false
+    else if dir == 1
+        if high > bP
+            if newWave and pull and not na(ext)
+                aP := ext
+                aT := extT
+            bP := high
+            bT := time
+            ext := na
+            extT := na
+            pull := false
+        else if na(ext) or low < ext
+            ext := low
+            extT := time
+        if close < aP
+            dir := -1
+            aP := bP
+            aT := bT
+            bP := low
+            bT := time
+            ext := na
+            extT := na
+            pull := false
+    else
+        if low < bP
+            if newWave and pull and not na(ext)
+                aP := ext
+                aT := extT
+            bP := low
+            bT := time
+            ext := na
+            extT := na
+            pull := false
+        else if na(ext) or high > ext
+            ext := high
+            extT := time
+        if close > aP
+            dir := 1
+            aP := bP
+            aT := bT
+            bP := high
+            bT := time
+            ext := na
+            extT := na
+            pull := false
+    [dir, aP, aT, bP, bT]
+
+int chartSec = timeframe.in_seconds()
+string bigTf = bigTfIn == "อัตโนมัติ" ? (chartSec <= 300 ? "15" : chartSec <= 900 ? "60" : chartSec <= 3600 ? "240" : chartSec < 86400 ? "D" : "W") : bigTfIn
+bool bigOk = timeframe.in_seconds(bigTf) > chartSec
+string bigName = f_tfName(bigTf)
+
+[sDir, sA, sAT, sB, sBT] = f_fib(swLen, true)
+[bDir, bA, bAT, bB, bBT] = request.security(syminfo.tickerid, bigTf, f_fib(bigLen, false))
+
+bool sOk = sDir != 0 and not na(sA) and not na(sB) and math.abs(sB - sA) >= minImp * atr
+bool bOk = bigOk and not na(bDir) and bDir != 0 and not na(bA) and not na(bB)
+
+var array<float> lqP = array.new<float>()
+var array<int> lqB = array.new<int>()
+var array<int> lqS = array.new<int>()
+var array<float> bkP = array.new<float>()
+var array<int> bkB = array.new<int>()
+var array<int> bkS = array.new<int>()
+var array<float> flP = array.new<float>()
+var array<int> flB = array.new<int>()
+var array<int> flS = array.new<int>()
+var array<float> gP = array.new<float>()
+var array<int> gB = array.new<int>()
+var array<int> gS = array.new<int>()
+var array<label> gL = array.new<label>()
+var string lastEvt = ""
+var int lastEvtBar = na
+var int lastGrabUpBar = na
+var int lastGrabDnBar = na
+
+int stallBars = math.max(1, int(math.round(stallMin * 60.0 / chartSec)))
+float qh = ta.pivothigh(high, liqLen, liqLen)
+float ql = ta.pivotlow(low, liqLen, liqLen)
+
+bool grabUpNow = false
+bool grabDnNow = false
+float grabUpP = na
+float grabDnP = na
+if lqP.size() > 0
+    for i = lqP.size() - 1 to 0
+        float p = lqP.get(i)
+        int s = lqS.get(i)
+        bool hit = s == 1 ? high > p : low < p
+        if hit
+            bool thru = s == 1 ? close > p : close < p
+            if thru
+                bkP.push(p)
+                bkB.push(bar_index)
+                bkS.push(s)
+            else if s == 1
+                grabUpNow := true
+                grabUpP := na(grabUpP) ? p : math.max(grabUpP, p)
+            else
+                grabDnNow := true
+                grabDnP := na(grabDnP) ? p : math.min(grabDnP, p)
+            lqP.remove(i)
+            lqB.remove(i)
+            lqS.remove(i)
+
+if grabUpNow
+    label lb = showEvt ? label.new(bar_index, high, "Grab", style = label.style_label_down, color = color(na), textcolor = cMute, size = SZS, tooltip = "ไส้กวาด liquidity ด้านบนแล้วปิดกลับ (§18)") : na
+    gP.push(grabUpP)
+    gB.push(bar_index)
+    gS.push(1)
+    gL.push(lb)
+    lastGrabUpBar := bar_index
+    lastEvt := "Grab ด้านบน"
+    lastEvtBar := bar_index
+if grabDnNow
+    label lb = showEvt ? label.new(bar_index, low, "Grab", style = label.style_label_up, color = color(na), textcolor = cMute, size = SZS, tooltip = "ไส้กวาด liquidity ด้านล่างแล้วปิดกลับ (§18)") : na
+    gP.push(grabDnP)
+    gB.push(bar_index)
+    gS.push(-1)
+    gL.push(lb)
+    lastGrabDnBar := bar_index
+    lastEvt := "Grab ด้านล่าง"
+    lastEvtBar := bar_index
+
+if gP.size() > 0
+    for i = gP.size() - 1 to 0
+        float p = gP.get(i)
+        int s = gS.get(i)
+        int g0 = gB.get(i)
+        int age = bar_index - g0
+        label lb = gL.get(i)
+        if age > 0
+            bool fast = s == 1 ? p - low >= fastAtr * atr : high - p >= fastAtr * atr
+            bool done = false
+            if fast and age <= fastBars
+                if not na(lb)
+                    lb.set_text("Grab เร็ว")
+                    lb.set_textcolor(s == 1 ? cDn : cUp)
+                    lb.set_tooltip("กวาดแล้ววิ่งออก " + str.tostring(fastAtr) + " ATR ภายใน " + str.tostring(age) + " แท่ง\nคลิป: grab ที่ดีต้องมีปฏิกิริยาเร็ว (§18)")
+                if lastEvtBar == g0
+                    lastEvt := "Grab เร็ว"
+                done := true
+            else if age >= math.max(stallBars, fastBars)
+                if math.abs(close - p) <= 0.5 * atr
+                    if not na(lb)
+                        lb.set_text("Grab นิ่ง")
+                        lb.set_textcolor(cGold)
+                        lb.set_tooltip("กวาดแล้วยังนิ่งอยู่แถวระดับเดิม\nคลิป: นิ่งราว 30 นาที มักไป grab ต่อ (§18)")
+                    if lastEvtBar == g0
+                        lastEvt := "Grab นิ่ง (มักไป grab ต่อ)"
+                done := true
+            if done
+                gP.remove(i)
+                gB.remove(i)
+                gS.remove(i)
+                gL.remove(i)
+
+bool fkUp = false
+bool fkDn = false
+bool goUp = false
+bool goDn = false
+float fkUpP = na
+float fkUpEx = na
+float fkDnP = na
+float fkDnEx = na
+if bkP.size() > 0
+    for i = bkP.size() - 1 to 0
+        float p = bkP.get(i)
+        int s = bkS.get(i)
+        int age = bar_index - bkB.get(i)
+        if age > 0
+            bool back = s == 1 ? close < p : close > p
+            if back
+                float fex = s == 1 ? high : low
+                for k = 0 to age
+                    fex := s == 1 ? math.max(fex, high[k]) : math.min(fex, low[k])
+                if s == 1
+                    fkUp := true
+                    fkUpP := p
+                    fkUpEx := na(fkUpEx) ? fex : math.max(fkUpEx, fex)
+                else
+                    fkDn := true
+                    fkDnP := p
+                    fkDnEx := na(fkDnEx) ? fex : math.min(fkDnEx, fex)
+                bkP.remove(i)
+                bkB.remove(i)
+                bkS.remove(i)
+            else if age >= fkBars
+                flP.push(p)
+                flB.push(bar_index)
+                flS.push(s)
+                if s == 1
+                    goUp := true
+                else
+                    goDn := true
+                bkP.remove(i)
+                bkB.remove(i)
+                bkS.remove(i)
+
+if fkUp or fkDn
+    if showEvt
+        if fkUp
+            label.new(bar_index, high, "Fakeout", style = label.style_label_down, color = color(na), textcolor = cGold, size = SZS, tooltip = "ปิดทะลุ liquidity ด้านบนแล้วกลับเข้ามาภายใน " + str.tostring(fkBars) + " แท่ง (§20)")
+        if fkDn
+            label.new(bar_index, low, "Fakeout", style = label.style_label_up, color = color(na), textcolor = cGold, size = SZS, tooltip = "ปิดทะลุ liquidity ด้านล่างแล้วกลับเข้ามาภายใน " + str.tostring(fkBars) + " แท่ง (§20)")
+    lastEvt := fkUp ? "Fakeout ด้านบน" : "Fakeout ด้านล่าง"
+    lastEvtBar := bar_index
+if goUp or goDn
+    if showEvt
+        if goUp
+            label.new(bar_index, high, "ไปต่อ", style = label.style_label_down, color = color(na), textcolor = cMute, size = size.tiny, tooltip = "ทะลุแล้วยืนเหนือได้ " + str.tostring(fkBars) + " แท่ง → แนวต้านเดิมกลายเป็นแนวรับ (§5, §20)")
+        if goDn
+            label.new(bar_index, low, "ไปต่อ", style = label.style_label_up, color = color(na), textcolor = cMute, size = size.tiny, tooltip = "หลุดแล้วยืนใต้ได้ " + str.tostring(fkBars) + " แท่ง → แนวรับเดิมกลายเป็นแนวต้าน (§5, §20)")
+    lastEvt := goUp ? "ทะลุขึ้นแล้วไปต่อ" : "หลุดลงแล้วไปต่อ"
+    lastEvtBar := bar_index
+
+if flP.size() > 0
+    for i = flP.size() - 1 to 0
+        float p = flP.get(i)
+        int s = flS.get(i)
+        bool dead = bar_index - flB.get(i) > 500 or (s == 1 ? close < p - tol : close > p + tol)
+        if dead
+            flP.remove(i)
+            flB.remove(i)
+            flS.remove(i)
+while flP.size() > 40
+    flP.shift()
+    flB.shift()
+    flS.shift()
+
+if not na(qh)
+    lqP.push(qh)
+    lqB.push(bar_index - liqLen)
+    lqS.push(1)
+if not na(ql)
+    lqP.push(ql)
+    lqB.push(bar_index - liqLen)
+    lqS.push(-1)
+while lqP.size() > 80
+    lqP.shift()
+    lqB.shift()
+    lqS.shift()
+
+f_tl(float piv, int side, int len, float tl) =>
+    var float p1 = na
+    var int b1 = na
+    var float p2 = na
+    var int b2 = na
+    var bool ok = false
+    var int touches = 0
+    var int lastT = na
+    if ok
+        float val = p2 + (p2 - p1) / (b2 - b1) * (bar_index - b2)
+        bool broke = side == 1 ? close < val - tl : close > val + tl
+        if broke
+            ok := false
+        else if bar_index - lastT >= 3 and (side == 1 ? low <= val + tl and close >= val : high >= val - tl and close <= val)
+            touches += 1
+            lastT := bar_index
+            if showTl
+                label.new(bar_index, side == 1 ? low : high, str.tostring(touches), style = side == 1 ? label.style_label_up : label.style_label_down, color = color(na), textcolor = touches >= 5 ? cMute : cGold, size = size.small, tooltip = "trend line แตะครั้งที่ " + str.tostring(touches) + "\nคลิป: ครั้งที่ 3–4 ดีสุด · ครั้งที่ 5 ไม่ชอบ (§21)")
+    if not na(piv) and not ok
+        p1 := p2
+        b1 := b2
+        p2 := piv
+        b2 := bar_index - len
+        if not na(p1) and (side == 1 ? p2 > p1 : p2 < p1)
+            ok := true
+            touches := 2
+            lastT := b2
+    float valNow = ok ? p2 + (p2 - p1) / (b2 - b1) * (bar_index - b2) : na
+    [ok, valNow, touches, p1, b1, p2, b2]
+
+float tlLow = ta.pivotlow(low, swLen, swLen)
+float tlHigh = ta.pivothigh(high, swLen, swLen)
+[tuOk, tuVal, tuN, tu1P, tu1B, tu2P, tu2B] = f_tl(tlLow, 1, swLen, tol)
+[tdOk, tdVal, tdN, td1P, td1B, td2P, td2B] = f_tl(tlHigh, -1, swLen, tol)
+
+float hiN = ta.highest(high, stBars)
+float loN = ta.lowest(low, stBars)
+float hi2 = ta.highest(high, 2)
+float lo2 = ta.lowest(low, 2)
+bool stN = hiN - loN <= stRng * atr
+bool st2 = hi2 - lo2 <= stRng * atr
+
+int cIdx = -1
+int nb = stBars
+float hiW = hiN
+float loW = loN
+if sOk
+    if stN and time[stBars - 1] > sBT
+        float ex = sDir == 1 ? loN : hiN
+        float best = na
+        for j = 0 to 7
+            float lv = f_lv(sA, sB, RL.get(j))
+            if lv >= loN - tol and lv <= hiN + tol
+                float d = math.abs(lv - ex)
+                if na(best) or d < best
+                    best := d
+                    cIdx := j
+    if cIdx == -1 and st2 and time[1] > sBT
+        float lv88 = f_lv(sA, sB, 0.886)
+        if lv88 >= lo2 - tol and lv88 <= hi2 + tol
+            cIdx := 7
+            nb := 2
+            hiW := hi2
+            loW := lo2
+
+var int epG = -1
+var int epLast = na
+var float epA = na
+var box stBox = na
+var string lastStar = "—"
+var int lastStarBar = na
+int cG = cIdx >= 3 and cIdx <= 5 ? 3 : cIdx
+bool newEp = cIdx != -1 and (cG != epG or na(epLast) or bar_index - epLast > 1 or sA != epA)
+if cIdx != -1
+    epG := cG
+    epLast := bar_index
+    epA := sA
+
+if showStr and cIdx != -1
+    if newEp
+        stBox := box.new(bar_index - nb + 1, hiW, bar_index, loW, border_color = cMute, border_style = line.style_dotted, bgcolor = color.new(cFg, 94), text = "structure " + RN.get(cIdx), text_size = size.tiny, text_color = cMute, text_halign = text.align_left, text_valign = text.align_top)
+    else if not na(stBox)
+        stBox.set_right(bar_index)
+        stBox.set_top(math.max(stBox.get_top(), high))
+        stBox.set_bottom(math.min(stBox.get_bottom(), low))
+
+f_conf(int idx, float loW, float hiW, bool evGrab) =>
+    float lvP = f_lv(sA, sB, RL.get(idx))
+    bool g61 = idx >= 3 and idx <= 5
+    bool cBig = false
+    if bOk
+        for j = 0 to 9
+            if math.abs(f_lv(bA, bB, DL.get(j)) - lvP) <= tol
+                cBig := true
+    bool cEma = math.abs(ema200 - lvP) <= tol
+    bool cSma = math.abs(sma200 - lvP) <= tol
+    bool cTl = sDir == 1 ? tuOk and math.abs(tuVal - lvP) <= tol : tdOk and math.abs(tdVal - lvP) <= tol
+    float step = psyStep > 0 ? psyStep : f_step(close)
+    bool cPsy = usePsy and math.abs(lvP - math.round(lvP / step) * step) <= tol
+    bool cGrab = evGrab or (sDir == 1 ? not na(lastGrabDnBar) and bar_index - lastGrabDnBar <= stBars + 2 : not na(lastGrabUpBar) and bar_index - lastGrabUpBar <= stBars + 2)
+    bool cBr = false
+    if flP.size() > 0
+        for j = 0 to flP.size() - 1
+            if flS.get(j) == sDir and math.abs(flP.get(j) - lvP) <= tol
+                cBr := true
+    float lv65 = f_lv(sA, sB, 0.65)
+    float lv618 = f_lv(sA, sB, 0.618)
+    bool cSw = g61 and (sDir == 1 ? loW <= lv65 + tol and close >= lv618 - tol : hiW >= lv65 - tol and close <= lv618 + tol)
+    int n = 1 + (cBig ? 1 : 0) + (cEma ? 1 : 0) + (cSma ? 1 : 0) + (cTl ? 1 : 0) + (cPsy ? 1 : 0) + (cGrab ? 1 : 0) + (cBr ? 1 : 0) + (cSw ? 1 : 0)
+    bool okRule = true
+    string why = ""
+    if idx == 0 and math.abs(sB - sA) < strongImp * atr
+        okRule := false
+        why := "Fib 23 ใช้เฉพาะตอน impulse แรง (§4)"
+    if idx == 2 and not cBig
+        okRule := false
+        why := "Fib 50 ต้องตรงกับ Fib ใหญ่ (§6)"
+    if g61 and not cSw
+        okRule := false
+        why := "ระดับ 61: รอไส้กวาด 65 / 71 แล้วกลับแถว 61 ก่อน (§7–§8)"
+    string tip = "● Fib เล็ก (§3)\n" + f_d(cBig) + "Fib ใหญ่ " + bigName + " (§14)\n" + f_d(cEma) + "EMA 200 (§16)\n" + f_d(cSma) + "SMA 200 (§16)\n" + f_d(cTl) + "trend line (§21)" + (usePsy ? "\n" + f_d(cPsy) + "เลขกลม (🤖 แทน psychological level)" : "") + "\n" + f_d(cGrab) + "grab liquidity (§17–§18)\n" + f_d(cBr) + "break & retest (§5)" + (g61 ? "\n" + f_d(cSw) + "กวาด 65 / 71 แล้วกลับแถว 61 (§7–§8)" : "") + "\nรวม " + str.tostring(n) + " · ขั้นต่ำ " + str.tostring(minConf) + (idx == 1 ? "\nคลิป: 38 ใช้เมื่อ bias ชัด ไม่ใช้ตอน ranging (§5) · สคริปต์เช็กข้อนี้ไม่ได้" : "") + (okRule ? "" : "\n☆ " + why)
+    [n, okRule, lvP, tip]
+
+f_lvIn(float ex, float ref) =>
+    int gi = -1
+    float gd = na
+    for j = 1 to 7
+        float lv = f_lv(sA, sB, RL.get(j))
+        if lv >= math.min(ex, ref) - tol and lv <= math.max(ex, ref) + tol
+            float d = math.abs(lv - ex)
+            if na(gd) or d < gd
+                gd := d
+                gi := j
+    gi
+
+f_tp(int d, float en, float risk) =>
+    float best = na
+    string nm = ""
+    if lqP.size() > 0
+        for i = 0 to lqP.size() - 1
+            if lqS.get(i) == d
+                float p = lqP.get(i)
+                float rr = (p - en) * d / risk
+                if rr >= minRR and (na(best) or math.abs(p - en) < math.abs(best - en))
+                    best := p
+                    nm := "liquidity"
+    if sOk and sDir == d
+        float rr0 = (sB - en) * d / risk
+        if rr0 >= minRR and (na(best) or math.abs(sB - en) < math.abs(best - en))
+            best := sB
+            nm := "Fib 0%"
+    [best, nm]
+
+var int tDir = 0
+var float tEn = na
+var float tSl = na
+var float tTp = na
+var float tRisk = na
+var int tBar = na
+var int tT = 0
+var box tpBox = na
+var box slBox = na
+var int nT = 0
+var int nW = 0
+var float sumR = 0.0
+var array<int> nTy = array.new<int>(3, 0)
+var array<int> wTy = array.new<int>(3, 0)
+var array<float> rTy = array.new<float>(3, 0.0)
+var array<string> TYN = array.from("★", "Grab", "Fakeout")
+var string lastTrade = "—"
+
+if tDir != 0 and bar_index > tBar
+    bool hitSl = tDir == 1 ? low <= tSl : high >= tSl
+    bool hitTp = tDir == 1 ? high >= tTp : low <= tTp
+    float r = na
+    string res = ""
+    float ry = close
+    if hitSl
+        r := -1.0
+        res := "SL"
+        ry := tSl
+    else if hitTp
+        r := math.abs(tTp - tEn) / tRisk
+        res := "TP"
+        ry := tTp
+    else if bar_index - tBar >= maxHold
+        r := (close - tEn) / tRisk * tDir
+        res := "หมดเวลา"
+    if na(r)
+        if not na(tpBox)
+            tpBox.set_right(bar_index + 1)
+            slBox.set_right(bar_index + 1)
+    else
+        nT += 1
+        nW += r > 0 ? 1 : 0
+        sumR += r
+        nTy.set(tT, nTy.get(tT) + 1)
+        wTy.set(tT, wTy.get(tT) + (r > 0 ? 1 : 0))
+        rTy.set(tT, rTy.get(tT) + r)
+        string rs = (r >= 0 ? "+" : "") + str.tostring(r, "#.#") + "R"
+        if not na(tpBox)
+            tpBox.set_right(bar_index)
+            slBox.set_right(bar_index)
+        if showTrade
+            label.new(bar_index, ry, res + " " + rs, style = label.style_label_left, color = color(na), textcolor = r > 0 ? cUp : cDn, size = SZS, tooltip = (tDir == 1 ? "Buy " : "Sell ") + TYN.get(tT) + " · ปิดด้วย " + res + "\nเข้า " + str.tostring(tEn, format.mintick) + " · ออก " + str.tostring(ry, format.mintick) + "\nไม่หักค่าใช้จ่าย")
+        lastTrade := (tDir == 1 ? "Buy " : "Sell ") + TYN.get(tT) + " · " + res + " " + rs
+        tDir := 0
+        tpBox := na
+        slBox := na
+
+int trig = 0
+int trigT = 0
+int trigN = 0
+float slRef = na
+string trigTip = ""
+
+if newEp
+    [n, okRule, lvP, tipC] = f_conf(cIdx, loW, hiW, false)
+    string tip = "Fib " + RN.get(cIdx) + (sDir == 1 ? " · Fib ฝั่ง buy (ขาขึ้น)" : " · Fib ฝั่ง sell (ขาลง)") + " · " + str.tostring(lvP, format.mintick) + "\n● structure " + str.tostring(nb) + " แท่ง (§12 · ต้องมี)\n" + tipC
+    if showStar and n >= minConf
+        string tipS = tip + "\n★ = เงื่อนไขครบ · จุดเข้าดูป้าย Buy / Sell"
+        if okRule
+            label.new(bar_index, low, "★ " + str.tostring(n), yloc = sDir == 1 ? yloc.belowbar : yloc.abovebar, style = sDir == 1 ? label.style_label_up : label.style_label_down, color = cGold, textcolor = color.white, size = SZ, tooltip = tipS)
+        else
+            label.new(bar_index, low, "☆ " + str.tostring(n), yloc = sDir == 1 ? yloc.belowbar : yloc.abovebar, style = sDir == 1 ? label.style_label_up : label.style_label_down, color = color(na), textcolor = cMute, size = SZ, tooltip = tipS)
+        lastStar := (okRule ? "★ " : "☆ ") + str.tostring(n) + " ที่ " + RN.get(cIdx)
+        lastStarBar := bar_index
+    if useStar and okRule and n >= minConf
+        trig := sDir
+        trigT := 0
+        trigN := n
+        slRef := sDir == 1 ? loW : hiW
+        trigTip := tip
+
+if trig == 0 and useGrab and sOk and (sDir == 1 ? grabDnNow : grabUpNow)
+    float gx = sDir == 1 ? low : high
+    int gi = f_lvIn(gx, sDir == 1 ? grabDnP : grabUpP)
+    if gi >= 0
+        [n2, ok2, lv2, tip2] = f_conf(gi, low, high, true)
+        if ok2 and n2 >= minConf
+            trig := sDir
+            trigT := 1
+            trigN := n2
+            slRef := gx
+            trigTip := "Fib " + RN.get(gi) + " · " + str.tostring(lv2, format.mintick) + " · grab แล้วปิดกลับ\n" + tip2
+
+if trig == 0 and useFake and sOk and (sDir == 1 ? fkDn : fkUp)
+    float fx = sDir == 1 ? fkDnEx : fkUpEx
+    int fi = f_lvIn(fx, sDir == 1 ? fkDnP : fkUpP)
+    if fi >= 0
+        [n3, ok3, lv3, tip3] = f_conf(fi, sDir == 1 ? fx : low, sDir == 1 ? high : fx, true)
+        if ok3 and n3 >= minConf
+            trig := sDir
+            trigT := 2
+            trigN := n3
+            slRef := fx
+            trigTip := "Fib " + RN.get(fi) + " · " + str.tostring(lv3, format.mintick) + " · fakeout แล้วกลับเข้ามา\n" + tip3
+
+bool inSess = not useSess or not na(time(timeframe.period, sessStr, "Asia/Bangkok"))
+if tDir == 0 and trig != 0 and inSess
+    float en = close
+    float slP = slRef - trig * slBuf * atr
+    float risk = math.max(math.abs(en - slP), minRisk * atr)
+    slP := en - trig * risk
+    [tpP, tpNm] = f_tp(trig, en, risk)
+    if not na(tpP)
+        tDir := trig
+        tEn := en
+        tSl := slP
+        tTp := tpP
+        tRisk := risk
+        tBar := bar_index
+        tT := trigT
+        float rr = math.abs(tpP - en) / risk
+        if showTrade
+            tpBox := box.new(bar_index, math.max(tpP, en), bar_index + 1, math.min(tpP, en), border_color = color.new(cUp, 60), bgcolor = color.new(cUp, 85))
+            slBox := box.new(bar_index, math.max(slP, en), bar_index + 1, math.min(slP, en), border_color = color.new(cDn, 60), bgcolor = color.new(cDn, 85))
+            string src = trigT == 0 ? "คลิป: เข้าตอน structure จบ (21:06–21:15)" : trigT == 1 ? "คลิป: grab เสร็จ แท่งถัดไปคือจุดเข้า (1:08:19)" : "คลิป: แท่งที่ 3 หลัง fakeout (1:23:39–1:24:13)"
+            string tipE = (trig == 1 ? "Buy" : "Sell") + " · เข้าแบบ " + TYN.get(trigT) + "\nเข้า " + str.tostring(en, format.mintick) + "\nSL " + str.tostring(slP, format.mintick) + " (" + str.tostring(risk / atr, "#.#") + " ATR)\nTP " + str.tostring(tpP, format.mintick) + " = " + tpNm + "\nRR 1:" + str.tostring(rr, "#.#") + " · confluence " + str.tostring(trigN) + "\n\n" + trigTip + "\n\n" + src + "\nกติกาจุดเข้า AI ตีความจากตัวอย่างในคลิป · ไม่หักค่าใช้จ่าย"
+            label.new(bar_index, en, (trig == 1 ? "Buy " : "Sell ") + TYN.get(trigT), style = label.style_label_right, color = color(na), textcolor = trig == 1 ? cUp : cDn, size = SZS, tooltip = tipE)
+
+if barstate.islastconfirmedhistory
+    string lg = "Bills Fib · " + syminfo.ticker + " " + timeframe.period + " · ไม้ " + str.tostring(nT) + (nT > 0 ? " · ชนะ " + str.tostring(100.0 * nW / nT, "#") + "% · รวม " + str.tostring(sumR, "#.##") + "R · เฉลี่ย " + str.tostring(sumR / nT, "#.###") + "R" : "")
+    for k = 0 to 2
+        lg += " | " + TYN.get(k) + " " + str.tostring(nTy.get(k)) + " ไม้ " + str.tostring(rTy.get(k), "#.##") + "R"
+    log.info(lg)
+
+var array<line> dl = array.new<line>()
+var array<label> dlb = array.new<label>()
+var array<linefill> dfl = array.new<linefill>()
+var array<line> lql = array.new<line>()
+var array<label> lqlb = array.new<label>()
+var array<line> tll = array.new<line>()
+
+f_clrL(array<line> a) =>
+    while a.size() > 0
+        line.delete(a.pop())
+
+f_clrB(array<label> a) =>
+    while a.size() > 0
+        label.delete(a.pop())
+
+f_clrF(array<linefill> a) =>
+    while a.size() > 0
+        linefill.delete(a.pop())
+
+f_drawFib(float a, float b, int aT, bool big) =>
+    line l618 = na
+    line l886 = na
+    int cnt = show118 ? 11 : 10
+    for j = 0 to cnt - 1
+        float r = DL.get(j)
+        float y = f_lv(a, b, r)
+        bool fav = r >= 0.618 and r <= 0.886
+        color c = big ? color.new(cBig, 25) : fav ? cFav : cLvl
+        line ln = line.new(aT, y, time, y, xloc = xloc.bar_time, color = c, width = fav and not big ? 2 : 1, style = big ? line.style_dashed : line.style_solid)
+        dl.push(ln)
+        string nm = (big ? "ใหญ่ " : "") + DN.get(j)
+        string tipL = (big ? "Fib ใหญ่ " + bigName + " " : "Fib เล็ก ") + DN.get(j) + " = " + str.tostring(y, format.mintick)
+        if big
+            dlb.push(label.new(aT, y, nm, xloc = xloc.bar_time, style = label.style_label_lower_left, color = color(na), textcolor = cBig, size = SZS, tooltip = tipL))
+        else
+            dlb.push(label.new(bar_index + 2, y, nm, style = label.style_label_left, color = color(na), textcolor = fav ? cFg : cMute, size = SZS, tooltip = tipL))
+        if r == 0.618
+            l618 := ln
+        if r == 0.886
+            l886 := ln
+    if showBand and not big and not na(l618) and not na(l886)
+        dfl.push(linefill.new(l618, l886, cBand))
+
+f_pos(string s) =>
+    switch s
+        "ขวาบน" => position.top_right
+        "ขวากลาง" => position.middle_right
+        "ขวาล่าง" => position.bottom_right
+        "ซ้ายบน" => position.top_left
+        => position.bottom_left
+
+var table tb = table.new(f_pos(panelPos), 2, 15, bgcolor = cBg, frame_color = color.new(cFg, 70), frame_width = 1, border_color = color.new(cFg, 88), border_width = 1)
+if barstate.isfirst
+    table.merge_cells(tb, 0, 14, 1, 14)
+
+f_row(int r, string k, string v, color vc) =>
+    table.cell(tb, 0, r, k, text_color = cFg, text_size = SZS, text_halign = text.align_left)
+    table.cell(tb, 1, r, v, text_color = vc, text_size = SZS, text_halign = text.align_left)
+
+f_atr(float d) =>
+    str.tostring(d / atr, "#.#") + " ATR"
+
+if barstate.islast
+    f_clrL(dl)
+    f_clrB(dlb)
+    f_clrF(dfl)
+    f_clrL(lql)
+    f_clrB(lqlb)
+    f_clrL(tll)
+    if showSmall and sOk
+        f_drawFib(sA, sB, sAT, false)
+    if showBig and bOk
+        f_drawFib(bA, bB, bAT, true)
+    float upP = na
+    float dnP = na
+    if lqP.size() > 0
+        array<bool> used = array.new<bool>(lqP.size(), false)
+        for side in array.from(1, -1)
+            for k = 1 to liqMax
+                int bi = -1
+                float bd = na
+                for i = 0 to lqP.size() - 1
+                    if lqS.get(i) == side and not used.get(i)
+                        float d = math.abs(lqP.get(i) - close)
+                        if na(bd) or d < bd
+                            bd := d
+                            bi := i
+                if bi >= 0
+                    used.set(bi, true)
+                    float p = lqP.get(bi)
+                    if k == 1
+                        if side == 1
+                            upP := p
+                        else
+                            dnP := p
+                    if showLiq
+                        color lc = side == 1 ? cDn : cUp
+                        lql.push(line.new(math.max(lqB.get(bi), bar_index - 4999), p, bar_index + 4, p, color = color.new(lc, 25), style = line.style_dotted, width = 1))
+                        lqlb.push(label.new(bar_index + 4, p, "liquidity", style = label.style_label_left, color = color(na), textcolor = color.new(lc, 10), size = size.tiny, tooltip = "ไส้ที่ยังไม่โดนกวาด · " + str.tostring(p, format.mintick) + " (§17)"))
+    if showTl
+        if tuOk and not na(tu1B)
+            int x1 = math.max(tu1B, bar_index - 4999)
+            float sl = (tu2P - tu1P) / (tu2B - tu1B)
+            tll.push(line.new(x1, tu1P + sl * (x1 - tu1B), bar_index + 5, tuVal + sl * 5, color = color.new(cUp, 20), width = 1))
+        if tdOk and not na(td1B)
+            int x1 = math.max(td1B, bar_index - 4999)
+            float sl = (td2P - td1P) / (td2B - td1B)
+            tll.push(line.new(x1, td1P + sl * (x1 - td1B), bar_index + 5, tdVal + sl * 5, color = color.new(cDn, 20), width = 1))
+    if showPanel
+        string fibTxt = sOk ? (sDir == 1 ? "ขาขึ้น · Fib ฝั่ง buy" : "ขาลง · Fib ฝั่ง sell") + " · " + f_atr(math.abs(sB - sA)) : "ยังไม่มี (impulse สั้นกว่า " + str.tostring(minImp) + " ATR)"
+        string retTxt = "—"
+        if sOk
+            float ret = (sB - close) / (sB - sA) * 100
+            int ni = 0
+            float nd = na
+            for j = 0 to 9
+                float d = math.abs(f_lv(sA, sB, DL.get(j)) - close)
+                if na(nd) or d < nd
+                    nd := d
+                    ni := j
+            retTxt := str.tostring(ret, "#") + "% · ใกล้ " + DN.get(ni) + " (" + str.tostring(f_lv(sA, sB, DL.get(ni)), format.mintick) + ")"
+        string bigTxt = "ยังไม่มี"
+        if not bigOk
+            bigTxt := "ปิด (TF ใหญ่ต้องสูงกว่ากราฟ)"
+        else if bOk
+            int ni = 0
+            float nd = na
+            for j = 0 to 9
+                float d = math.abs(f_lv(bA, bB, DL.get(j)) - close)
+                if na(nd) or d < nd
+                    nd := d
+                    ni := j
+            bigTxt := (bDir == 1 ? "ขาขึ้น" : "ขาลง") + " · ใกล้ " + DN.get(ni) + " (" + str.tostring(f_lv(bA, bB, DL.get(ni)), format.mintick) + ")"
+        string emaTxt = na(ema200) ? "ข้อมูลไม่พอ" : (close >= ema200 ? "ใต้ราคา " : "เหนือราคา ") + f_atr(math.abs(close - ema200))
+        string smaTxt = na(sma200) ? "ข้อมูลไม่พอ" : (close >= sma200 ? "ใต้ราคา " : "เหนือราคา ") + f_atr(math.abs(close - sma200))
+        string upTxt = na(upP) ? "ไม่มี" : str.tostring(upP, format.mintick) + " (" + f_atr(upP - close) + ")"
+        string dnTxt = na(dnP) ? "ไม่มี" : str.tostring(dnP, format.mintick) + " (" + f_atr(close - dnP) + ")"
+        string stTxt = cIdx != -1 ? "สะสม " + str.tostring(nb) + " แท่ง ทับ " + RN.get(cIdx) : "ไม่มี"
+        string tlTxt = tuOk and tdOk ? "ขึ้น แตะ " + str.tostring(tuN) + " · ลง แตะ " + str.tostring(tdN) : tuOk ? "ขาขึ้น · แตะ " + str.tostring(tuN) + " ครั้ง" : tdOk ? "ขาลง · แตะ " + str.tostring(tdN) + " ครั้ง" : "ไม่มี"
+        string evTxt = lastEvt == "" ? "—" : lastEvt + " · " + str.tostring(bar_index - lastEvtBar) + " แท่งก่อน"
+        string starTxt = na(lastStarBar) ? "—" : lastStar + " · " + str.tostring(bar_index - lastStarBar) + " แท่งก่อน"
+        table.cell(tb, 0, 0, "Bills Fib ★", text_color = cFg, text_size = SZ, text_halign = text.align_left, text_formatting = text.format_bold)
+        table.cell(tb, 1, 0, f_tfName(timeframe.period) + " · ใหญ่ " + bigName, text_color = cMute, text_size = SZS, text_halign = text.align_left)
+        f_row(1, "Fib เล็ก", fibTxt, sOk ? (sDir == 1 ? cUp : cDn) : cMute)
+        f_row(2, "ราคาย่อแล้ว", retTxt, cFg)
+        f_row(3, "Fib ใหญ่", bigTxt, bOk ? (bDir == 1 ? cUp : cDn) : cMute)
+        f_row(4, "EMA 200", emaTxt, cFg)
+        f_row(5, "SMA 200", smaTxt, cFg)
+        f_row(6, "liquidity ด้านบน", upTxt, cDn)
+        f_row(7, "liquidity ด้านล่าง", dnTxt, cUp)
+        f_row(8, "structure", stTxt, cIdx != -1 ? cGold : cMute)
+        f_row(9, "trend line", tlTxt, cFg)
+        f_row(10, "เหตุการณ์ล่าสุด", evTxt, cFg)
+        f_row(11, "★ ล่าสุด", starTxt, na(lastStarBar) ? cMute : cGold)
+        string openTxt = tDir != 0 ? (tDir == 1 ? "Buy " : "Sell ") + TYN.get(tT) + " เปิดอยู่ · SL " + str.tostring(tSl, format.mintick) + " · TP " + str.tostring(tTp, format.mintick) : lastTrade
+        f_row(12, "ไม้ล่าสุด", openTxt, tDir == 1 ? cUp : tDir == -1 ? cDn : cFg)
+        string stTip = "แยกตามแบบเข้า:"
+        for k = 0 to 2
+            int c = nTy.get(k)
+            stTip += "\n" + TYN.get(k) + ": " + str.tostring(c) + " ไม้" + (c > 0 ? " · ชนะ " + str.tostring(100.0 * wTy.get(k) / c, "#") + "% · รวม " + str.tostring(rTy.get(k), "#.#") + "R" : "")
+        stTip += "\n\nRR ขั้นต่ำ " + str.tostring(minRR) + " · ไม่หักสเปรด / ค่าคอม\nSL กับ TP โดนในแท่งเดียวกัน นับเป็น SL"
+        string sumTxt = nT > 0 ? str.tostring(nT) + " ไม้ · ชนะ " + str.tostring(100.0 * nW / nT, "#") + "% · รวม " + (sumR >= 0 ? "+" : "") + str.tostring(sumR, "#.#") + "R · เฉลี่ย " + (sumR >= 0 ? "+" : "") + str.tostring(sumR / nT, "#.##") + "R" : "ยังไม่มีไม้"
+        table.cell(tb, 0, 13, "ย้อนหลัง", text_color = cFg, text_size = SZS, text_halign = text.align_left)
+        table.cell(tb, 1, 13, sumTxt, text_color = nT == 0 ? cMute : sumR >= 0 ? cUp : cDn, text_size = SZS, text_halign = text.align_left, tooltip = stTip)
+        table.cell(tb, 0, 14, "จุดเข้า / SL / TP = AI ตีความจากตัวอย่างในคลิป · ไม่หักค่าใช้จ่าย · ที่มา notes/outside/bills-theory-01.md", text_color = cMute, text_size = size.tiny, text_halign = text.align_left)

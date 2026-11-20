@@ -1,0 +1,931 @@
+//@version=6
+indicator("อ่านกราฟ ★", shorttitle = "อ่านกราฟ", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+
+string G1 = "แสดงผล"
+string G2 = "โครงสร้าง"
+string G3 = "★ นับ confirm (คลาส: อย่างน้อย 3–4 ข้อ ทดแทนกันได้)"
+string G4 = "🤖 ค่าที่ AI ตั้งเอง (คลาสไม่มีตัวเลข)"
+string G5 = "⑧ จุดเข้า · SL · TP (เปิดเมื่อขึ้น ★)"
+string G6 = "⑨ วิเคราะห์: ข้อไหนทำให้แพ้"
+
+bool showStruct = input.bool(true, "① โครงสร้างเทรนด์", group = G1, tooltip = "โซนแนวรับ/แนวต้านปัจจุบัน + เส้นตรงระดับที่โดนเนื้อปิดทะลุ (เปลี่ยน / ไปต่อ)\nที่มา: trend §4–§8, §16–§19, §21–§22")
+bool showLeft = input.bool(true, "② แนวซ้ายมือ", group = G1, tooltip = "ยอด/ก้นเก่าที่ยังไม่โดนเนื้อปิดทะลุ\nที่มา: S/R §5, §8, §14 · trend §15")
+bool showHtf = input.bool(true, "② โซน TF ใหญ่", group = G1, tooltip = "แถบสีทางขวาของกราฟ + เส้นจุดที่ขอบโซนฝั่งใกล้ราคา\nที่มา: S/R §2 (Major zone ดูจาก 4H/Day) · คลิปวันที่ 10")
+bool showRound = input.bool(true, "② เส้นเลขกลม", group = G1, tooltip = "คลาสไม่ได้สอน · มาจากงานวิจัย: ราคาทองลงท้าย 0/00 เป็นกำแพงจิตวิทยา")
+bool showReact = input.bool(false, "③ Reaction ที่โซน", group = G1, tooltip = "ไส้ทิ่ม / Rej / ทะลุ บนทุกแท่งที่แตะโซน + เส้นประ 50% ของแท่ง Rej\nที่มา: S/R §3, §11 · confirm §8")
+bool showStar = input.bool(true, "④ ★ นับ confirm", group = G1, tooltip = "★n = นับ confirm ได้ครบขั้นต่ำ · ☆n = ครบแต่โดนหักล้าง\nชี้ที่ป้ายเพื่อดูทีละข้อ · ★ ไม่ใช่คำสั่งเข้าเทรด")
+bool showPanel = input.bool(true, "⑤ แผงเงื่อนไขเข้าเทรด", group = G1)
+bool showCandle = input.bool(false, "⑥ คำบรรยายแท่ง", group = G1, tooltip = "50/50 = ไม่มี Range · V+ = ไม่มี Liquidity · V↑ V↓ = เนื้อยาวขึ้น/สั้นลง 3 แท่งติด · กลืน = แท่งกลืนกิน\nที่มา: candlestick §2–§5 · คลิปวันที่ 10\nปิดไว้เพราะงานวิจัยและผลทดสอบของเราพบว่าทรงแท่งเดี่ยว ๆ ทำนายแท่งถัดไปไม่ได้")
+bool showSess = input.bool(false, "⑦ แถบช่วงเวลา", group = G1, tooltip = "คลาสไม่ได้สอน · ช่วง London–NY ซ้อนกันผันผวนสุด")
+int nLeft = input.int(2, "จำนวนแนวซ้ายมือต่อฝั่ง", minval = 0, maxval = 8, group = G1)
+string tf1 = input.timeframe("240", "TF ใหญ่ 1 (ใช้ดูทิศใน confirm)", group = G1)
+string tf2 = input.timeframe("D", "TF ใหญ่ 2", group = G1)
+float roundStep = input.float(0, "ระยะเลขกลม (0 = อัตโนมัติ)", minval = 0, group = G1, tooltip = "0 = ตามขนาดราคา: ทอง ~4,000 → ทุก 100 · BTC ~64,000 → ทุก 1,000")
+string sessStr = input.session("1900-2300", "ช่วงเวลา (เวลาไทย)", group = G1)
+string panelPos = input.string("ขวากลาง", "ตำแหน่งแผง", options = ["ขวาบน", "ขวากลาง", "ขวาล่าง", "ซ้ายบน", "ซ้ายล่าง"], group = G1)
+string uiSize = input.string("กลาง", "ขนาดตัวอักษร", options = ["เล็ก", "กลาง", "ใหญ่"], group = G1)
+
+int swingLen = input.int(3, "ความยาว swing (แท่งต่อข้าง)", minval = 1, maxval = 20, group = G2, tooltip = "1 = ย่อแท่งเดียวก็นับ ตามตัวอย่างในคลาส (trend §5, §18)\n3 = ค่ามาตรฐาน และเป็นแบบที่ผลทดสอบเก่าของเราดีสุด\n5–10 = โครงสร้างใหญ่")
+string curMode = input.string("กลับตัว", "แนวปัจจุบันย้ายเมื่อ", options = ["กลับตัว", "ทำยอด-ก้นใหม่ก่อน"], group = G2, tooltip = "คำถามค้างในโน้ต trend\nกลับตัว = ตามที่คลิปพูด (trend §21 นาที 77–78)\nทำยอด-ก้นใหม่ก่อน = นิ่งกว่า ป้ายน้อยกว่า")
+
+int minConf = input.int(3, "จำนวน confirm ขั้นต่ำ", minval = 1, maxval = 8, group = G3, tooltip = "คลิปวันที่ 9 นาที 44–45: อย่างน้อย 3–4 confirm\nข้อแนวรับแนวต้าน บังคับเสมอ")
+bool use2 = input.bool(true, "นับ: เทรนด์ TF นี้", group = G3, tooltip = "ทิศเดียวกับมุมมองโครงสร้างของ TF นี้ · trend §1")
+bool use3 = input.bool(true, "นับ: เปลี่ยนโครงสร้าง", group = G3, tooltip = "แท่งนี้ปิดทะลุแนวปัจจุบันจนมุมมองกลับทิศ · confirm §9\nได้ข้อเทรนด์หรือข้อนี้อย่างใดอย่างหนึ่ง")
+bool use4 = input.bool(true, "นับ: เทรนด์ TF ใหญ่", group = G3, tooltip = "ทิศเดียวกับมุมมองของ TF ใหญ่ 1 · คลิปวันที่ 10")
+bool use5 = input.bool(true, "นับ: แท่ง confirm", group = G3, tooltip = "แท่งทิศเดียวกัน และเนื้อไม่น้อยกว่าเปอร์เซ็นต์ที่ตั้ง · candlestick §4, §9 · confirm §1")
+bool use6 = input.bool(true, "นับ: Rejection", group = G3, tooltip = "ไส้ยาวที่โซน แล้วปิดเป็นแท่งทิศนั้น · confirm §8")
+bool use7 = input.bool(true, "นับ: แท่งกลืนกิน", group = G3, tooltip = "เนื้อปิดเลยไส้ของ 2 แท่งก่อนหน้า (2 แท่งนั้นสวนทาง) ภายในแท่งเดียว · คลิปวันที่ 10")
+bool use8 = input.bool(true, "นับ: Volume", group = G3, tooltip = "tick volume ไม่น้อยกว่าค่าเฉลี่ย · candlestick §5\nถ้าฟีดไม่มี volume จะไม่นับข้อนี้อัตโนมัติ")
+float bodyPct = input.float(50, "แท่ง confirm: เนื้อขั้นต่ำ % ของแท่ง", minval = 0, maxval = 100, group = G3, tooltip = "🤖 มาจากผลทดสอบเก่าของเรา")
+bool vetoNoRange = input.bool(true, "หักล้าง: ไม่มี Range (50/50)", group = G3, tooltip = "คลาส: หักล้างทุก confirm (candlestick §3)\nผลทดสอบของเรา: ไม่ช่วยและไม่เสีย")
+float roomAtr = input.float(1.0, "หักล้าง: ติดโซน เมื่อแนวถัดไปใกล้กว่า (ATR)", minval = 0, step = 0.25, group = G3, tooltip = "trend §15 ซ้ายมือไม่โล่ง · 0 = ปิด")
+
+bool showTrade = input.bool(true, "แสดงจุดเข้า SL TP", group = G5, tooltip = "จุดเข้า = ราคาปิดของแท่ง ★ (คลาส: เข้าหลังแท่ง confirm ปิด · candlestick §9)\nกล่องเขียว = ระยะถึง TP · กล่องแดง = ระยะถึง SL\nเปิดทีละไม้ · ★ ที่ขึ้นตอนมีไม้ค้างอยู่จะไม่เปิดซ้ำ")
+string slMode = input.string("ปลายไส้แท่ง ★", "SL", options = ["ปลายไส้แท่ง ★", "ATR"], group = G5, tooltip = "ปลายไส้แท่ง ★ = คลาส: SL ใต้ไส้ (candlestick §6 · confirm §5 · คลิปวันที่ 10)\nATR = ระยะคงที่ตามความผันผวน\nหมายเหตุ: แท่ง Rejection คลาสวาง SL ที่เนื้อเทียน (confirm §8) — ยังไม่ได้ทำแยก")
+float slAtr = input.float(1.5, "SL แบบ ATR: กี่เท่า", minval = 0.1, step = 0.25, group = G5)
+float slBuf = input.float(0.1, "🤖 เผื่อเลยปลายไส้ (ATR)", minval = 0, step = 0.05, group = G5, tooltip = "กันไส้กระตุกเลยปลายไส้นิดเดียว")
+float minRiskAtr = input.float(0.3, "🤖 SL ห่างขั้นต่ำ (ATR)", minval = 0, step = 0.05, group = G5, tooltip = "แท่ง ★ เล็กมาก SL จะชิดเกิน")
+string tpMode = input.string("เท่าของระยะ SL", "TP", options = ["เท่าของระยะ SL", "แนวถัดไป"], group = G5, tooltip = "เท่าของระยะ SL = TP ห่างจากจุดเข้าเท่ากับระยะ SL × ค่าข้างล่าง (คลาส: ตัวอย่าง TP 1:1 · trend §12)\nแนวถัดไป = ขอบโซนถัดไปรวม TF ใหญ่ (confirm §4: เป้าแรกคือยอดเดิม · คลิปวันที่ 10 'ถึงไหน')\nไม่มีแนวถัดไป → ใช้แบบเท่าของระยะ SL")
+float rr = input.float(1.0, "TP ห่างกี่เท่าของระยะ SL", minval = 0.1, step = 0.25, group = G5)
+string exitMode = input.string("หน้าทุน", "กระโดดออก", options = ["ไม่ใช้", "หน้าทุน", "แท่งปิดทะลุแท่งก่อนหน้า", "โครงสร้างเปลี่ยน"], group = G5, tooltip = "ออกก่อน SL เมื่อกราฟเริ่มไปผิดทาง\nหน้าทุน = ไปถึงครึ่งทาง TP แล้วย้อนกลับมาที่จุดเข้า → ออกเท่าทุน (คลิปวันที่ 10 นาที 39 · วันที่ 9 นาที 69–71 · ครูปิด 50% ที่นี่ แต่ตรงนี้ปิดทั้งไม้)\nแท่งปิดทะลุแท่งก่อนหน้า = Buy: แท่งปิดต่ำกว่า low แท่งก่อนหน้า · Sell: ปิดสูงกว่า high (คลิปวันที่ 10 นาที 29, 62 'กระโดดออก')\nโครงสร้างเปลี่ยน = เนื้อปิดหลุดแนวปัจจุบันจนมุมมองกลับทิศ (trend §19)\nทุกแบบคำนวณคู่กันเบื้องหลัง · ชี้ที่แถว 'ย้อนหลัง' ในแผงเพื่อเทียบผล")
+float beTrig = input.float(50, "หน้าทุน: เริ่มทำงานเมื่อไปถึงกี่ % ของทาง TP", minval = 1, maxval = 100, group = G5, tooltip = "คลิปวันที่ 10: 'ขึ้นมาถึงกลางๆ อีกครึ่งนึงถึง TP' = 50%")
+float beOff = input.float(0, "หน้าทุนบวก: เลื่อน SL เลยจุดเข้าไปอีก (ราคา)", minval = 0, step = 0.1, group = G5, tooltip = "0 = เลื่อนมาที่จุดเข้าพอดี\nคลิปวันที่ 9 นาที 73: นักเรียนถามว่า BE บวกนิดหน่อยได้ไหม → ครูให้ตั้ง offset ได้")
+int maxBars = input.int(48, "🤖 ปิดเองเมื่อครบกี่แท่ง", minval = 1, group = G5, tooltip = "ถ้าไม่ถึง TP หรือ SL ภายในจำนวนแท่งนี้ ปิดที่ราคาปิด · trend §10 เข้าไว ออกไว")
+bool showStats = input.bool(true, "แสดงผลย้อนหลังในแผง", group = G5, tooltip = "นับทุกไม้ที่วาดบนกราฟนี้ · ถ้าแท่งเดียวโดนทั้ง TP และ SL นับเป็น SL\nS/R §15: จดสถิติให้ถูกต้อง")
+
+bool showAna = input.bool(true, "แสดงตารางวิเคราะห์", group = G6, tooltip = "ทุกแท่งที่ react หรือทะลุที่โซน (ไม่ต้องครบ ★ และรวมที่โดนหักล้าง) ถูกนับเป็นไม้ทดสอบ\nจุดเข้า SL เหมือนข้างบน · TP เท่ากับระยะ SL × ค่าที่ตั้ง · ไม่มีกระโดดออก · ไม้ซ้อนกันได้\nแล้วเทียบอัตราชนะตอนที่มีกับไม่มีแต่ละข้อ")
+string anaPos = input.string("ซ้ายล่าง", "ตำแหน่งตาราง", options = ["ขวาบน", "ขวากลาง", "ขวาล่าง", "ซ้ายบน", "ซ้ายล่าง"], group = G6)
+
+float wickTol = input.float(5, "ไม่มีไส้ = ไส้ไม่เกิน % ของแท่ง", minval = 0, maxval = 50, group = G4)
+float rejK = input.float(1.0, "Rejection = ไส้ยาวอย่างน้อยกี่เท่าของเนื้อ", minval = 0, step = 0.25, group = G4)
+int avgLen = input.int(20, "เฉลี่ยเนื้อและ Volume กี่แท่ง", minval = 2, group = G4)
+
+color C_UP = #089981
+color C_DN = #F23645
+color C_STAR = #E2B93B
+color C_INK = #131722
+color C_GRAY = #787B86
+color C_WARN = #FF9800
+color C_TF1 = #2962FF
+color C_TF2 = #9C27B0
+color C_NONE = color.new(#000000, 100)
+
+int fsP = uiSize == "เล็ก" ? 9 : uiSize == "กลาง" ? 11 : 13
+int fs = fsP - 2
+int fsTag = fs
+
+type Zone
+    float top
+    float bot
+    int t0
+    int touch
+    int b0
+
+f_exists(array<Zone> a, int id) =>
+    bool r = false
+    if not na(id)
+        for z in a
+            if z.t0 == id
+                r := true
+                break
+    r
+
+f_find(array<Zone> a, int id) =>
+    Zone r = na
+    if not na(id)
+        for z in a
+            if z.t0 == id
+                r := z
+                break
+    r
+
+f_addZone(array<Zone> a, float nt, float nb, int id, int bidx) =>
+    int rid = id
+    bool merged = false
+    for z in a
+        if nb <= z.top and nt >= z.bot
+            z.top := math.max(z.top, nt)
+            z.bot := math.min(z.bot, nb)
+            z.touch += 1
+            rid := z.t0
+            merged := true
+            break
+    if not merged
+        a.push(Zone.new(nt, nb, id, 1, bidx))
+        if a.size() > 40
+            a.shift()
+    rid
+
+f_near2(array<Zone> a, bool isRes) =>
+    float t1 = na
+    float b1 = na
+    int o1 = na
+    float t2 = na
+    float b2 = na
+    int o2 = na
+    for z in a
+        float key = isRes ? z.bot : -z.top
+        float k1 = isRes ? b1 : -t1
+        float k2 = isRes ? b2 : -t2
+        if na(k1) or key < k1
+            t2 := t1
+            b2 := b1
+            o2 := o1
+            t1 := z.top
+            b1 := z.bot
+            o1 := z.t0
+        else if na(k2) or key < k2
+            t2 := z.top
+            b2 := z.bot
+            o2 := z.t0
+    [t1, b1, o1, t2, b2, o2]
+
+f_engine(int L, bool modeA, bool onlyConf) =>
+    var array<Zone> res = array.new<Zone>()
+    var array<Zone> sup = array.new<Zone>()
+    var int view = 0
+    var int curResId = na
+    var int curSupId = na
+    var int candResId = na
+    var int candSupId = na
+    float ph = ta.pivothigh(high, L, L)
+    float pl = ta.pivotlow(low, L, L)
+    float bodyHi = ta.highest(math.max(open, close), 2 * L + 1)
+    float bodyLo = ta.lowest(math.min(open, close), 2 * L + 1)
+    float h1 = high[1]
+    float l1 = low[1]
+    int tPiv = time[L]
+    int evStruct = 0
+    bool brokeUp = false
+    bool brokeDn = false
+    bool brokeCurRes = false
+    bool brokeCurSup = false
+    int brokeUpT0 = na
+    int brokeDnT0 = na
+    float brokeUpLvl = na
+    float brokeDnLvl = na
+    bool reactUp = false
+    bool reactDn = false
+    float cResLvl = na
+    int cResT0 = na
+    float cSupLvl = na
+    int cSupT0 = na
+    if not onlyConf or barstate.isconfirmed
+        int i = res.size() - 1
+        while i >= 0
+            Zone z = res.get(i)
+            if close > z.top
+                brokeUp := true
+                brokeUpT0 := na(brokeUpT0) ? z.t0 : math.min(brokeUpT0, z.t0)
+                brokeUpLvl := na(brokeUpLvl) ? z.top : math.max(brokeUpLvl, z.top)
+                if z.t0 == curResId
+                    brokeCurRes := true
+                    cResLvl := z.top
+                    cResT0 := z.t0
+                res.remove(i)
+            else if high >= z.bot
+                if h1 < z.bot
+                    z.touch += 1
+                if close < z.bot
+                    reactDn := true
+                if high > z.top
+                    z.top := high
+            i -= 1
+        int j = sup.size() - 1
+        while j >= 0
+            Zone z = sup.get(j)
+            if close < z.bot
+                brokeDn := true
+                brokeDnT0 := na(brokeDnT0) ? z.t0 : math.min(brokeDnT0, z.t0)
+                brokeDnLvl := na(brokeDnLvl) ? z.bot : math.min(brokeDnLvl, z.bot)
+                if z.t0 == curSupId
+                    brokeCurSup := true
+                    cSupLvl := z.bot
+                    cSupT0 := z.t0
+                sup.remove(j)
+            else if low <= z.top
+                if l1 > z.top
+                    z.touch += 1
+                if close > z.top
+                    reactUp := true
+                if low < z.bot
+                    z.bot := low
+            j -= 1
+        if brokeCurRes
+            evStruct := view == 1 ? 2 : 1
+            view := 1
+        if brokeCurSup
+            evStruct := view == -1 ? -2 : -1
+            view := -1
+        if not na(ph)
+            float nb = math.min(bodyHi, ph - syminfo.mintick)
+            candResId := f_addZone(res, ph, nb, tPiv, bar_index - L)
+        if not na(pl)
+            float nt = math.max(bodyLo, pl + syminfo.mintick)
+            candSupId := f_addZone(sup, nt, pl, tPiv, bar_index - L)
+        if modeA or view == 0
+            curResId := candResId
+            curSupId := candSupId
+        else if view == 1
+            curResId := candResId
+            if brokeCurRes or na(curSupId)
+                curSupId := candSupId
+        else
+            curSupId := candSupId
+            if brokeCurSup or na(curResId)
+                curResId := candResId
+        curResId := f_exists(res, curResId) ? curResId : na
+        curSupId := f_exists(sup, curSupId) ? curSupId : na
+    [view, res, sup, curResId, curSupId, evStruct, brokeUp, brokeDn, brokeUpT0, brokeUpLvl, brokeDnT0, brokeDnLvl, reactUp, reactDn, cResLvl, cResT0, cSupLvl, cSupT0]
+
+f_htf(int L, bool modeA) =>
+    [v, res, sup, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _] = f_engine(L, modeA, false)
+    [r1t, r1b, r1o, r2t, r2b, r2o] = f_near2(res, true)
+    [s1t, s1b, s1o, s2t, s2b, s2o] = f_near2(sup, false)
+    [v[1], r1t[1], r1b[1], r1o[1], r2t[1], r2b[1], r2o[1], s1t[1], s1b[1], s1o[1], s2t[1], s2b[1], s2o[1]]
+
+f_tfName(string tf) =>
+    float m = str.tonumber(tf)
+    na(m) ? tf : m % 60 == 0 ? str.tostring(m / 60) + "H" : str.tostring(m) + "m"
+
+f_pos(string p) =>
+    p == "ขวาบน" ? position.top_right : p == "ขวากลาง" ? position.middle_right : p == "ขวาล่าง" ? position.bottom_right : p == "ซ้ายบน" ? position.top_left : position.bottom_left
+
+f_bit(int m, int i) =>
+    math.floor(m / math.pow(2, i)) % 2 == 1
+
+f_x(float v) =>
+    na(v) ? "–" : str.tostring(v, "#.#")
+
+f_px(float v) =>
+    str.tostring(v, "#,##0.00")
+
+f_arrow(int v) =>
+    v == 1 ? "↑" : v == -1 ? "↓" : "–"
+
+f_dirTh(int v) =>
+    v == 1 ? "ขาขึ้น" : v == -1 ? "ขาลง" : "–"
+
+f_out(string why, float r) =>
+    why == "TP" ? "ถึง TP" : why == "SL" ? "โดน SL" : why == "หน้าทุน" ? "ออกหน้าทุน" : why + (r > 0.05 ? " (ชนะ)" : r < -0.05 ? " (แพ้)" : " (เสมอ)")
+
+string tfName0 = f_tfName(timeframe.period)
+string tfName1 = f_tfName(tf1)
+string tfName2 = f_tfName(tf2)
+var array<string> cname = array.from("แนวรับแนวต้าน", "เทรนด์ " + tfName0, "เปลี่ยนโครงสร้าง", "เทรนด์ " + tfName1, "แท่ง confirm", "Rejection", "แท่งกลืนกิน", "Volume")
+var array<string> cdesc = array.from("ราคา react ที่โซน (ไส้ทิ่มแล้วเนื้อปิดกลับ) หรือเนื้อปิดทะลุแนว\nข้อนี้บังคับ · S/R §1", "ทิศเดียวกับโครงสร้างของ " + tfName0 + " · trend §1", "แท่งนี้เนื้อปิดทะลุแนวปัจจุบันจนมุมมองกลับทิศ · confirm §9\nนับข้อนี้หรือข้อเทรนด์อย่างใดอย่างหนึ่ง", "ทิศเดียวกับโครงสร้างของ " + tfName1 + " · คลิปวันที่ 10", "แท่งทิศเดียวกัน เนื้อ ≥ " + str.tostring(bodyPct) + "% ของแท่ง · candlestick §9 · confirm §1", "ไส้ยาวที่โซนแล้วปิดเป็นแท่งทิศนั้น · confirm §8", "เนื้อปิดเลยไส้ของ 2 แท่งก่อนหน้าที่สวนทาง ภายในแท่งเดียว · คลิปวันที่ 10", "tick volume ≥ เฉลี่ย " + str.tostring(avgLen) + " แท่ง · candlestick §5")
+bool hasVol = ta.cum(nz(volume)) > 0
+var array<bool> cen = array.from(true, use2, use3, use4, use5, use6, use7, use8)
+cen.set(7, use8 and hasVol)
+int cenN = 0
+for i = 0 to 7
+    if cen.get(i)
+        cenN += 1
+
+f_cnt(int m) =>
+    int n = 0
+    for i = 0 to 7
+        if cen.get(i) and f_bit(m, i)
+            n += 1
+    n
+
+f_pass(int m) =>
+    f_bit(m, 0) and f_cnt(m) >= minConf
+
+f_veto(int m) =>
+    (vetoNoRange and f_bit(m, 8)) or f_bit(m, 9)
+
+f_star(int m) =>
+    f_bit(m, 10) and f_pass(m) and not f_veto(m)
+
+f_vetoed(int m) =>
+    f_bit(m, 10) and f_pass(m) and f_veto(m)
+
+f_reason(int m) =>
+    vetoNoRange and f_bit(m, 8) ? "ไม่มี Range" : "ติดโซน"
+
+f_tip(string side, int m) =>
+    string s = side + " · นับได้ " + str.tostring(f_cnt(m)) + "/" + str.tostring(cenN) + " (ต้อง ≥ " + str.tostring(minConf) + ")"
+    for i = 0 to 7
+        s += "\n" + (not cen.get(i) ? "–   " : f_bit(m, i) ? "✓   " : "·    ") + cname.get(i)
+    if f_bit(m, 8)
+        s += "\n⚠   ไม่มี Range = 50/50" + (vetoNoRange ? " → หักล้าง" : "")
+    if f_bit(m, 9)
+        s += "\n⚠   ติดโซน: แนวถัดไปใกล้กว่า " + str.tostring(roomAtr) + " ATR → หักล้าง"
+    s
+
+bool modeA = curMode == "กลับตัว"
+bool conf = barstate.isconfirmed
+int barMs = timeframe.in_seconds() * 1000
+float atr = ta.atr(14)
+float rng = high - low
+float body = math.abs(close - open)
+bool upC = close > open
+bool dnC = close < open
+float bodyShare = rng > 0 ? body / rng * 100 : 0.0
+float upWick = high - math.max(open, close)
+float loWick = math.min(open, close) - low
+float rangeWick = upC ? upWick : loWick
+float liqWick = upC ? loWick : upWick
+bool noRange = rng > 0 and (upC or dnC) and rangeWick <= rng * wickTol / 100
+bool noLiq = rng > 0 and (upC or dnC) and liqWick <= rng * wickTol / 100
+float avgBodyPrev = ta.sma(body, avgLen)[1]
+float avgVolPrev = ta.sma(volume, avgLen)[1]
+float bodyX = avgBodyPrev > 0 ? body / avgBodyPrev : na
+float volX = hasVol and avgVolPrev > 0 ? volume / avgVolPrev : na
+float pc = close[1]
+
+[view, resZ, supZ, curResId, curSupId, evStruct, brokeUp, brokeDn, brokeUpT0, brokeUpLvl, brokeDnT0, brokeDnLvl, reactUpZ, reactDnZ, cResLvl, cResT0, cSupLvl, cSupT0] = f_engine(swingLen, modeA, true)
+[hv1, h1rT1, h1rB1, h1rO1, h1rT2, h1rB2, h1rO2, h1sT1, h1sB1, h1sO1, h1sT2, h1sB2, h1sO2] = request.security(syminfo.tickerid, tf1, f_htf(swingLen, modeA), lookahead = barmerge.lookahead_on)
+[hv2, h2rT1, h2rB1, h2rO1, h2rT2, h2rB2, h2rO2, h2sT1, h2sB1, h2sO1, h2sT2, h2sB2, h2sO2] = request.security(syminfo.tickerid, tf2, f_htf(swingLen, modeA), lookahead = barmerge.lookahead_on)
+
+array<float> hResT = array.from(h1rT1, h1rT2, h2rT1, h2rT2)
+array<float> hResB = array.from(h1rB1, h1rB2, h2rB1, h2rB2)
+array<int> hResO = array.from(h1rO1, h1rO2, h2rO1, h2rO2)
+array<float> hSupT = array.from(h1sT1, h1sT2, h2sT1, h2sT2)
+array<float> hSupB = array.from(h1sB1, h1sB2, h2sB1, h2sB2)
+array<int> hSupO = array.from(h1sO1, h1sO2, h2sO1, h2sO2)
+
+bool hReactUp = false
+bool hReactDn = false
+bool hBrkUp = false
+bool hBrkDn = false
+bool hTouch = false
+float roomUp = na
+float roomDn = na
+for k = 0 to 3
+    float rt = hResT.get(k)
+    float rb = hResB.get(k)
+    float st = hSupT.get(k)
+    float sb = hSupB.get(k)
+    if not na(rt)
+        if high >= rb and low <= rt
+            hTouch := true
+            if close < rb
+                hReactDn := true
+        if close > rt and pc <= rt
+            hBrkUp := true
+        if rt >= close
+            float dU = math.max(rb - close, 0)
+            roomUp := na(roomUp) ? dU : math.min(roomUp, dU)
+    if not na(st)
+        if low <= st and high >= sb
+            hTouch := true
+            if close > st
+                hReactUp := true
+        if close < sb and pc >= sb
+            hBrkDn := true
+        if sb <= close
+            float dD = math.max(close - st, 0)
+            roomDn := na(roomDn) ? dD : math.min(roomDn, dD)
+for z in resZ
+    float dU = math.max(z.bot - close, 0)
+    roomUp := na(roomUp) ? dU : math.min(roomUp, dU)
+for z in supZ
+    float dD = math.max(close - z.top, 0)
+    roomDn := na(roomDn) ? dD : math.min(roomDn, dD)
+
+bool anyReactUp = conf and (reactUpZ or hReactUp)
+bool anyReactDn = conf and (reactDnZ or hReactDn)
+bool anyBrkUp = conf and (brokeUp or hBrkUp)
+bool anyBrkDn = conf and (brokeDn or hBrkDn)
+bool rejUp = anyReactUp and loWick > 0 and loWick >= rejK * body
+bool rejDn = anyReactDn and upWick > 0 and upWick >= rejK * body
+bool engUp = upC and close[1] < open[1] and close[2] < open[2] and close > math.max(high[1], high[2])
+bool engDn = dnC and close[1] > open[1] and close[2] > open[2] and close < math.min(low[1], low[2])
+bool volOk = hasVol and not na(avgVolPrev) and volume >= avgVolPrev
+bool vRoomUp = roomAtr > 0 and not na(roomUp) and roomUp < roomAtr * atr
+bool vRoomDn = roomAtr > 0 and not na(roomDn) and roomDn < roomAtr * atr
+
+bool c1Up = anyReactUp or anyBrkUp
+bool c1Dn = anyReactDn or anyBrkDn
+bool c3Up = evStruct == 1
+bool c3Dn = evStruct == -1
+bool c2Up = view == 1 and not c3Up
+bool c2Dn = view == -1 and not c3Dn
+bool c4Up = hv1 == 1
+bool c4Dn = hv1 == -1
+bool c5Up = upC and bodyShare >= bodyPct
+bool c5Dn = dnC and bodyShare >= bodyPct
+bool c6Up = rejUp and upC
+bool c6Dn = rejDn and dnC
+
+int maskUp = (c1Up ? 1 : 0) + (c2Up ? 2 : 0) + (c3Up ? 4 : 0) + (c4Up ? 8 : 0) + (c5Up ? 16 : 0) + (c6Up ? 32 : 0) + (engUp ? 64 : 0) + (volOk ? 128 : 0) + (noRange ? 256 : 0) + (vRoomUp ? 512 : 0) + (upC ? 1024 : 0)
+int maskDn = (c1Dn ? 1 : 0) + (c2Dn ? 2 : 0) + (c3Dn ? 4 : 0) + (c4Dn ? 8 : 0) + (c5Dn ? 16 : 0) + (c6Dn ? 32 : 0) + (engDn ? 64 : 0) + (volOk ? 128 : 0) + (noRange ? 256 : 0) + (vRoomDn ? 512 : 0) + (dnC ? 1024 : 0)
+
+bool starUp = conf and f_star(maskUp)
+bool starDn = conf and f_star(maskDn)
+bool vetUp = conf and f_vetoed(maskUp)
+bool vetDn = conf and f_vetoed(maskDn)
+
+string candleInfo = "แท่งนี้: " + (upC ? "ขาขึ้น" : dnC ? "ขาลง" : "ไม่มีเนื้อ") + " · เนื้อ " + str.tostring(bodyShare, "#") + "% ของแท่ง · ×" + f_x(bodyX) + " ของเฉลี่ย" + (hasVol ? " · Vol ×" + f_x(volX) : "") + "\nRange " + (noRange ? "ไม่มี (50/50)" : "มี") + " · Liquidity " + (noLiq ? "ไม่มี (volume ชัด)" : "มี")
+string manualTxt = "ต้องดูเอง: Impulse/LG · Wick fill"
+
+int selMode = exitMode == "ไม่ใช้" ? 0 : exitMode == "หน้าทุน" ? 1 : exitMode == "แท่งปิดทะลุแท่งก่อนหน้า" ? 2 : 3
+var array<string> exitNames = array.from("ไม่ใช้", "หน้าทุน", "แท่งปิดทะลุแท่งก่อนหน้า", "โครงสร้างเปลี่ยน")
+var array<int> sDir = array.new<int>(4, 0)
+var array<float> sE = array.new<float>(4, na)
+var array<float> sSL = array.new<float>(4, na)
+var array<float> sTP = array.new<float>(4, na)
+var array<float> sRk = array.new<float>(4, na)
+var array<int> sBar = array.new<int>(4, 0)
+var array<bool> sBE = array.new<bool>(4, false)
+var array<int> sN = array.new<int>(4, 0)
+var array<int> sW = array.new<int>(4, 0)
+var array<int> sL = array.new<int>(4, 0)
+var array<float> sSum = array.new<float>(4, 0.0)
+var box bxTP = na
+var box bxSL = na
+var float lastR = na
+var string lastOut = ""
+var int lastDir = 0
+var string lastWhy = ""
+string tradeTip = ""
+int fsBox = fs
+
+if conf and showTrade
+    bool newSig = starUp or starDn
+    int nd = starUp ? 1 : -1
+    float ne = close
+    float nsl = slMode == "ATR" ? ne - nd * slAtr * atr : (nd == 1 ? low : high) - nd * slBuf * atr
+    if math.abs(ne - nsl) < minRiskAtr * atr
+        nsl := ne - nd * minRiskAtr * atr
+    float nrk = math.abs(ne - nsl)
+    float nroom = nd == 1 ? roomUp : roomDn
+    float ntp = tpMode == "แนวถัดไป" and not na(nroom) and nroom > 0 ? ne + nd * nroom : ne + nd * rr * nrk
+    for m = 0 to 3
+        int d = sDir.get(m)
+        bool isSel = m == selMode
+        if d != 0 and bar_index > sBar.get(m)
+            float e = sE.get(m)
+            float sl = sSL.get(m)
+            float tp = sTP.get(m)
+            float rk = sRk.get(m)
+            bool beOn = sBE.get(m)
+            float beLvl = e + d * beOff
+            bool hitSL = d == 1 ? low <= sl : high >= sl
+            bool hitTP = d == 1 ? high >= tp : low <= tp
+            bool hitBE = beOn and (d == 1 ? low <= beLvl : high >= beLvl)
+            bool brk = m == 2 and (d == 1 ? close < low[1] : close > high[1])
+            bool flp = m == 3 and view == -d
+            bool tOut = bar_index - sBar.get(m) >= maxBars
+            float r = na
+            float px = na
+            string why = ""
+            if hitBE
+                r := beOff / rk
+                px := beLvl
+                why := "หน้าทุน"
+            else if hitSL
+                r := -1.0
+                px := sl
+                why := "SL"
+            else if hitTP
+                r := (tp - e) * d / rk
+                px := tp
+                why := "TP"
+            else if brk or flp
+                r := (close - e) * d / rk
+                px := close
+                why := "กระโดดออก"
+            else if tOut
+                r := (close - e) * d / rk
+                px := close
+                why := "ครบเวลา"
+            else if m == 1 and not beOn and (d == 1 ? high >= e + beTrig / 100 * (tp - e) : low <= e + beTrig / 100 * (tp - e))
+                sBE.set(m, true)
+                if isSel
+                    box.set_bgcolor(bxSL, color.new(C_WARN, 80))
+                    box.set_border_color(bxSL, color.new(C_WARN, 35))
+                    box.set_text(bxSL, "SL เลื่อนมาหน้าทุน" + (beOff > 0 ? "บวก " + str.tostring(beOff) : "") + " → " + f_px(beLvl))
+            if isSel
+                box.set_right(bxTP, bar_index)
+                box.set_right(bxSL, bar_index)
+            if not na(r)
+                sN.set(m, sN.get(m) + 1)
+                sW.set(m, sW.get(m) + (r > 0.05 ? 1 : 0))
+                sL.set(m, sL.get(m) + (r < -0.05 ? 1 : 0))
+                sSum.set(m, sSum.get(m) + r)
+                sDir.set(m, 0)
+                if isSel
+                    lastR := r
+                    lastWhy := why
+                    lastOut := f_out(why, r)
+                    string why2 = why == "กระโดดออก" ? (m == 2 ? "แท่งปิดทะลุแท่งก่อนหน้า" : "โครงสร้างเปลี่ยน") : why == "ครบเวลา" ? "ครบ " + str.tostring(maxBars) + " แท่ง" : why == "หน้าทุน" ? "ย้อนกลับมาที่จุดเข้า" : why
+                    label.new(bar_index, px, lastOut, style = label.style_label_left, color = C_NONE, textcolor = r > 0.05 ? C_UP : r < -0.05 ? C_DN : C_GRAY, size = fsBox, text_formatting = text.format_bold, tooltip = (d == 1 ? "Buy " : "Sell ") + f_px(e) + " → " + f_px(px) + "\nออกเพราะ: " + why2)
+        if sDir.get(m) == 0 and newSig
+            sDir.set(m, nd)
+            sE.set(m, ne)
+            sSL.set(m, nsl)
+            sTP.set(m, ntp)
+            sRk.set(m, nrk)
+            sBar.set(m, bar_index)
+            sBE.set(m, false)
+            if isSel
+                lastDir := nd
+                bxTP := box.new(bar_index, math.max(ne, ntp), bar_index + 1, math.min(ne, ntp), border_color = color.new(C_UP, 40), border_width = 1, bgcolor = color.new(C_UP, 78), text = "TP " + f_px(ntp), text_size = fsBox, text_color = chart.fg_color, text_halign = text.align_left, text_valign = text.align_center)
+                bxSL := box.new(bar_index, math.max(ne, nsl), bar_index + 1, math.min(ne, nsl), border_color = color.new(C_DN, 40), border_width = 1, bgcolor = color.new(C_DN, 78), text = "SL " + f_px(nsl), text_size = fsBox, text_color = chart.fg_color, text_halign = text.align_left, text_valign = text.align_center)
+                tradeTip := "\n\n" + (nd == 1 ? "Buy " : "Sell ") + f_px(ne) + "\nSL " + f_px(nsl) + "  (ห่าง " + str.tostring(nrk, "#,##0.00") + ")\nTP " + f_px(ntp) + "  (ห่าง " + str.tostring(math.abs(ntp - ne), "#,##0.00") + ")\nกระโดดออก: " + exitMode
+        else if newSig and isSel
+            tradeTip := "\n\nมีไม้เปิดอยู่ — ไม่เปิดซ้ำ"
+
+int tDir = sDir.get(selMode)
+float tEntry = sE.get(selMode)
+float tSL = sBE.get(selMode) ? sE.get(selMode) + sDir.get(selMode) * beOff : sSL.get(selMode)
+float tTP = sTP.get(selMode)
+int tBar = sBar.get(selMode)
+int nT = sN.get(selMode)
+int nW = sW.get(selMode)
+int nL = sL.get(selMode)
+
+f_pct(int a, int n) =>
+    n > 0 ? str.tostring(100.0 * a / n, "0") + "%" : "–"
+
+f_statLine(int m) =>
+    int n = sN.get(m)
+    n == 0 ? exitNames.get(m) + ": ยังไม่มีไม้" : exitNames.get(m) + ": " + str.tostring(n) + " ไม้ · ชนะ " + f_pct(sW.get(m), n) + " · แพ้ " + f_pct(sL.get(m), n) + " · เสมอ " + f_pct(n - sW.get(m) - sL.get(m), n)
+
+if barstate.islastconfirmedhistory and showTrade
+    log.info("เทียบกระโดดออก\n" + f_statLine(0) + "\n" + f_statLine(1) + "\n" + f_statLine(2) + "\n" + f_statLine(3))
+
+var array<float> qE = array.new<float>()
+var array<float> qSL = array.new<float>()
+var array<float> qTP = array.new<float>()
+var array<int> qD = array.new<int>()
+var array<int> qM = array.new<int>()
+var array<int> qB = array.new<int>()
+var array<int> aN = array.new<int>(10, 0)
+var array<int> aW = array.new<int>(10, 0)
+var array<int> bN = array.new<int>(10, 0)
+var array<int> bW = array.new<int>(10, 0)
+var array<int> cN = array.new<int>(9, 0)
+var array<int> cW = array.new<int>(9, 0)
+var int qN = 0
+var int qW = 0
+
+if conf and showAna
+    int qi = qE.size() - 1
+    while qi >= 0
+        int qd = qD.get(qi)
+        float qe = qE.get(qi)
+        bool hs = qd == 1 ? low <= qSL.get(qi) : high >= qSL.get(qi)
+        bool ht = qd == 1 ? high >= qTP.get(qi) : low <= qTP.get(qi)
+        bool qto = bar_index - qB.get(qi) >= maxBars
+        if bar_index > qB.get(qi) and (hs or ht or qto)
+            bool win = hs ? false : ht ? true : (close - qe) * qd > 0
+            int mk = qM.get(qi)
+            qN += 1
+            qW += win ? 1 : 0
+            int cnt = 0
+            for b = 0 to 7
+                if f_bit(mk, b)
+                    cnt += 1
+            cN.set(cnt, cN.get(cnt) + 1)
+            cW.set(cnt, cW.get(cnt) + (win ? 1 : 0))
+            for b = 1 to 9
+                if f_bit(mk, b)
+                    aN.set(b, aN.get(b) + 1)
+                    aW.set(b, aW.get(b) + (win ? 1 : 0))
+                else
+                    bN.set(b, bN.get(b) + 1)
+                    bW.set(b, bW.get(b) + (win ? 1 : 0))
+            qE.remove(qi)
+            qSL.remove(qi)
+            qTP.remove(qi)
+            qD.remove(qi)
+            qM.remove(qi)
+            qB.remove(qi)
+        qi -= 1
+    for s = 0 to 1
+        int qd = s == 0 ? 1 : -1
+        int mk = qd == 1 ? maskUp : maskDn
+        if f_bit(mk, 0) and f_bit(mk, 10) and qE.size() < 400
+            float qe = close
+            float qsl = (qd == 1 ? low : high) - qd * slBuf * atr
+            if math.abs(qe - qsl) < minRiskAtr * atr
+                qsl := qe - qd * minRiskAtr * atr
+            qE.push(qe)
+            qSL.push(qsl)
+            qTP.push(qe + qd * rr * math.abs(qe - qsl))
+            qD.push(qd)
+            qM.push(mk)
+            qB.push(bar_index)
+
+f_verdict(int n1, int w1, int n2, int w2, bool isVeto) =>
+    string v = "ตัวอย่างน้อย"
+    color c = C_GRAY
+    if n1 >= 20 and n2 >= 20
+        float p1 = 1.0 * w1 / n1
+        float p2 = 1.0 * w2 / n2
+        float se = math.sqrt(p1 * (1 - p1) / n1 + p2 * (1 - p2) / n2)
+        float df = p1 - p2
+        if df < -2 * se
+            v := isVeto ? "หักล้างถูก" : "ทำให้แพ้"
+            c := isVeto ? C_UP : C_DN
+        else if df > 2 * se
+            v := isVeto ? "หักล้างแล้วเสียของ" : "ช่วยให้ชนะ"
+            c := isVeto ? C_DN : C_UP
+        else
+            v := "ไม่ต่างกัน"
+    [v, c]
+
+f_wn(int w, int n) =>
+    n > 0 ? str.tostring(100.0 * w / n, "0") + "%  (" + str.tostring(n) + ")" : "–"
+
+f_cntGroup(int lo, int hi) =>
+    int n = 0
+    int w = 0
+    for c = lo to hi
+        n += cN.get(c)
+        w += cW.get(c)
+    [n, w]
+
+f_anaName(int b) =>
+    b == 8 ? "หักล้าง: ไม่มี Range" : b == 9 ? "หักล้าง: ติดโซน" : cname.get(b)
+
+if conf and showStar
+    if starUp or vetUp
+        string roomTxt = na(roomUp) ? "ด้านบนโล่ง ไม่มีแนว" : "แนวถัดไปด้านบน +$" + str.tostring(roomUp, "#,##0.0") + " (" + f_x(roomUp / atr) + " ATR)"
+        label.new(bar_index, low, (starUp ? "★ " : "☆ ") + str.tostring(f_cnt(maskUp)) + " ข้อ", yloc = yloc.belowbar, style = label.style_label_up, color = starUp ? C_STAR : C_NONE, textcolor = starUp ? C_INK : C_GRAY, size = fs, text_formatting = starUp ? text.format_bold : text.format_none, tooltip = f_tip("ฝั่งขึ้น", maskUp) + (starUp ? tradeTip : "") + "\n\n" + candleInfo + "\n" + roomTxt + "\n" + manualTxt)
+    if starDn or vetDn
+        string roomTxt = na(roomDn) ? "ด้านล่างโล่ง ไม่มีแนว" : "แนวถัดไปด้านล่าง −$" + str.tostring(roomDn, "#,##0.0") + " (" + f_x(roomDn / atr) + " ATR)"
+        label.new(bar_index, high, (starDn ? "★ " : "☆ ") + str.tostring(f_cnt(maskDn)) + " ข้อ", yloc = yloc.abovebar, style = label.style_label_down, color = starDn ? C_STAR : C_NONE, textcolor = starDn ? C_INK : C_GRAY, size = fs, text_formatting = starDn ? text.format_bold : text.format_none, tooltip = f_tip("ฝั่งลง", maskDn) + (starDn ? tradeTip : "") + "\n\n" + candleInfo + "\n" + roomTxt + "\n" + manualTxt)
+
+if conf and showStruct and evStruct != 0
+    bool up = evStruct > 0
+    float lvl = up ? cResLvl : cSupLvl
+    int t0 = up ? cResT0 : cSupT0
+    if not na(lvl) and not na(t0)
+        bool flip = math.abs(evStruct) == 1
+        color c = up ? C_UP : C_DN
+        line.new(t0, lvl, time, lvl, xloc = xloc.bar_time, color = color.new(c, flip ? 0 : 35), style = flip ? line.style_solid : line.style_dashed, width = 1)
+        string tip = (flip ? "เปลี่ยนมุมมองเป็นขา" : "ไปต่อตามขา") + (up ? "ขึ้น" : "ลง") + "\nเนื้อปิดทะลุ" + (up ? "แนวต้าน" : "แนวรับ") + "ปัจจุบันที่ " + f_px(lvl) + "\nแนวนี้อายุ " + f_x((time - t0) / 3600000.0) + " ชม. · ปิดเลยไป $" + str.tostring(math.abs(close - lvl), "#,##0.00")
+        label.new(math.round(t0 + (time - t0) / 2.0), lvl, flip ? "เปลี่ยนโครงสร้าง" : "ไปต่อตามโครงสร้าง", xloc = xloc.bar_time, style = up ? label.style_label_down : label.style_label_up, color = C_NONE, textcolor = color.new(c, flip ? 0 : 25), size = fsTag, text_formatting = flip ? text.format_bold : text.format_none, tooltip = tip)
+
+if conf and showReact
+    string rUp = anyBrkUp ? "ทะลุ" : rejUp ? "Rejection" : anyReactUp ? "ไส้ทิ่ม" : ""
+    if rUp != "" and not (showStar and (starUp or vetUp))
+        label.new(bar_index, low, rUp, yloc = yloc.belowbar, style = label.style_label_up, color = C_NONE, textcolor = color.new(C_UP, 30), size = math.max(fs - 2, 7))
+    string rDn = anyBrkDn ? "ทะลุ" : rejDn ? "Rejection" : anyReactDn ? "ไส้ทิ่ม" : ""
+    if rDn != "" and not (showStar and (starDn or vetDn))
+        label.new(bar_index, high, rDn, yloc = yloc.abovebar, style = label.style_label_down, color = C_NONE, textcolor = color.new(C_DN, 30), size = math.max(fs - 2, 7))
+    if rejUp or rejDn
+        float mid = (open + close) / 2
+        line.new(bar_index, mid, bar_index + 2, mid, color = color.new(C_GRAY, 40), style = line.style_dashed)
+
+bool cOn = showCandle and conf
+bool grow3 = body > body[1] and body[1] > body[2]
+bool shrink3 = body < body[1] and body[1] < body[2]
+bool up3 = upC and upC[1] and upC[2]
+bool dn3 = dnC and dnC[1] and dnC[2]
+plotchar(cOn and noRange and upC, "ไม่มี Range (ขาขึ้น)", "•", location.abovebar, C_WARN, text = "50/50", textcolor = C_WARN, size = size.tiny)
+plotchar(cOn and noRange and dnC, "ไม่มี Range (ขาลง)", "•", location.belowbar, C_WARN, text = "50/50", textcolor = C_WARN, size = size.tiny)
+plotchar(cOn and noLiq and upC and not noRange, "ไม่มี Liquidity (ขาขึ้น)", "•", location.belowbar, C_UP, text = "ไม่มี Liquidity", textcolor = C_UP, size = size.tiny)
+plotchar(cOn and noLiq and dnC and not noRange, "ไม่มี Liquidity (ขาลง)", "•", location.abovebar, C_DN, text = "ไม่มี Liquidity", textcolor = C_DN, size = size.tiny)
+plotchar(cOn and (up3 or dn3) and grow3 and not noRange and not noLiq, "เนื้อยาวขึ้น 3 แท่งติด", "•", location.abovebar, C_GRAY, text = "เนื้อยาวขึ้น", textcolor = C_GRAY, size = size.tiny)
+plotchar(cOn and (up3 or dn3) and shrink3 and not noRange and not noLiq, "เนื้อสั้นลง 3 แท่งติด", "•", location.abovebar, C_GRAY, text = "เนื้อสั้นลง", textcolor = C_GRAY, size = size.tiny)
+plotchar(cOn and engUp, "แท่งกลืนกิน (ขึ้น)", "•", location.belowbar, C_UP, text = "กลืนกิน", textcolor = C_UP, size = size.tiny)
+plotchar(cOn and engDn, "แท่งกลืนกิน (ลง)", "•", location.abovebar, C_DN, text = "กลืนกิน", textcolor = C_DN, size = size.tiny)
+
+bgcolor(showSess and not na(time(timeframe.period, sessStr, "Asia/Bangkok")) ? color.new(C_TF1, 94) : na, title = "ช่วงเวลา")
+
+alertcondition(starUp or starDn, "★ ครบ confirm", "อ่านกราฟ: ★ ครบ confirm ที่โซน")
+alertcondition(evStruct == 1 or evStruct == -1, "เปลี่ยนมุมมอง", "อ่านกราฟ: เนื้อปิดทะลุแนวปัจจุบัน เปลี่ยนมุมมอง")
+alertcondition(conf and hTouch and not hTouch[1], "ไส้แตะโซน TF ใหญ่", "อ่านกราฟ: ราคาแตะโซน TF ใหญ่")
+
+int pmUp = conf ? maskUp : nz(maskUp[1])
+int pmDn = conf ? maskDn : nz(maskDn[1])
+string pInfo = conf ? candleInfo : candleInfo[1]
+
+var array<box> boxes = array.new<box>()
+var array<label> zlabels = array.new<label>()
+var array<line> zlines = array.new<line>()
+
+f_box(int l, int r, float top, float bot, color lineC, color fillC, string st) =>
+    boxes.push(box.new(math.max(l, bar_index - 4999), top, r, bot, border_color = lineC, border_width = 1, border_style = st, bgcolor = fillC))
+
+f_tag(int x, float y, string txt, color c, int sz, bool bold, string tip) =>
+    zlabels.push(label.new(x, y, txt, style = label.style_label_left, color = C_NONE, textcolor = c, size = sz, text_formatting = bold ? text.format_bold : text.format_none, tooltip = tip))
+
+f_drawLeft(array<Zone> a, bool isRes, int curId, int n, int tR) =>
+    int drawn = 0
+    if a.size() > 0 and n > 0
+        array<float> keys = array.new<float>()
+        for z in a
+            keys.push(isRes ? z.bot : -z.top)
+        array<int> idx = keys.sort_indices(order.ascending)
+        for k in idx
+            Zone z = a.get(k)
+            if (na(curId) or z.t0 != curId) and drawn < n
+                f_box(z.b0, tR, z.top, z.bot, color.new(isRes ? C_DN : C_UP, 60), color.new(C_GRAY, 96), line.style_dotted)
+                drawn += 1
+    drawn
+
+f_cell(table t, int c, int r, string txt, color tc, int sz, string ha, color bg, bool bold, string tip, string ff) =>
+    table.cell(t, c, r, txt, text_color = tc, text_size = sz, text_halign = ha, bgcolor = bg, text_formatting = bold ? text.format_bold : text.format_none, tooltip = tip, text_font_family = ff)
+
+if barstate.islast
+    for b in boxes
+        b.delete()
+    boxes.clear()
+    for l in zlabels
+        l.delete()
+    zlabels.clear()
+    for l in zlines
+        l.delete()
+    zlines.clear()
+    int tZ = bar_index + 3
+    int tR1 = bar_index + 9
+    int tR2 = bar_index + 10
+    int tR3 = bar_index + 15
+    int tR4 = bar_index + 16
+    Zone cr = f_find(resZ, curResId)
+    Zone cs = f_find(supZ, curSupId)
+    string nmR = view == -1 ? "แนวต้านปัจจุบัน" : view == 1 ? "ยอดเดิม (แนวต้าน)" : "แนวต้านล่าสุด"
+    string nmS = view == 1 ? "แนวรับปัจจุบัน" : view == -1 ? "ก้นเดิม (แนวรับ)" : "แนวรับล่าสุด"
+    if showLeft
+        f_drawLeft(resZ, true, showStruct ? curResId : na, nLeft, tZ)
+        f_drawLeft(supZ, false, showStruct ? curSupId : na, nLeft, tZ)
+    if showStruct
+        if not na(cr)
+            bool keyR = view == -1
+            f_box(cr.b0, tZ, cr.top, cr.bot, color.new(C_DN, keyR ? 0 : 35), color.new(C_GRAY, keyR ? 86 : 93), keyR ? line.style_solid : line.style_dashed)
+            f_tag(tZ, (cr.top + cr.bot) / 2, nmR, C_DN, fsTag, keyR,f_px(cr.bot) + " – " + f_px(cr.top) + " · แตะ " + str.tostring(cr.touch) + (keyR ? "\nเนื้อปิดเหนือโซนนี้ = เปลี่ยนมุมมองเป็นขาขึ้น" : view == 1 ? "\nด่านแรกของขาขึ้น · เนื้อปิดผ่าน = ไปต่อ" : ""))
+        if not na(cs)
+            bool keyS = view == 1
+            f_box(cs.b0, tZ, cs.top, cs.bot, color.new(C_UP, keyS ? 0 : 35), color.new(C_GRAY, keyS ? 86 : 93), keyS ? line.style_solid : line.style_dashed)
+            f_tag(tZ, (cs.top + cs.bot) / 2, nmS, C_UP, fsTag, keyS,f_px(cs.bot) + " – " + f_px(cs.top) + " · แตะ " + str.tostring(cs.touch) + (keyS ? "\nเนื้อปิดใต้โซนนี้ = เปลี่ยนมุมมองเป็นขาลง" : view == -1 ? "\nด่านแรกของขาลง · เนื้อปิดผ่าน = ไปต่อ" : ""))
+    if showHtf
+        for k = 0 to 3
+            bool isD = k >= 2
+            color hc = isD ? C_TF2 : C_TF1
+            int xl = isD ? tR3 : tR1
+            int xr = isD ? tR4 : tR2
+            string hn = isD ? tfName2 : tfName1
+            float rt = hResT.get(k)
+            float rb = hResB.get(k)
+            int ro = hResO.get(k)
+            float st = hSupT.get(k)
+            float sb = hSupB.get(k)
+            int so = hSupO.get(k)
+            int rAgo = na(ro) ? 120 : math.min(math.max(int((time - ro) / barMs), 20), 300)
+            int sAgo = na(so) ? 120 : math.min(math.max(int((time - so) / barMs), 20), 300)
+            if not na(rt)
+                f_box(xl, xr, rt, rb, color.new(hc, 30), color.new(hc, 85), line.style_solid)
+                f_tag(xr, rb, "โซน " + hn, hc, fsTag, true, "โซน " + hn + " (แนวต้าน) " + f_px(rb) + " – " + f_px(rt))
+                zlines.push(line.new(math.max(bar_index - rAgo, 0), rb, xl, rb, color = color.new(hc, 40), style = line.style_dotted, width = 1))
+            if not na(st)
+                f_box(xl, xr, st, sb, color.new(hc, 30), color.new(hc, 85), line.style_solid)
+                f_tag(xr, st, "โซน " + hn, hc, fsTag, true, "โซน " + hn + " (แนวรับ) " + f_px(sb) + " – " + f_px(st))
+                zlines.push(line.new(math.max(bar_index - sAgo, 0), st, xl, st, color = color.new(hc, 40), style = line.style_dotted, width = 1))
+    float rStep = roundStep > 0 ? roundStep : math.pow(10, math.floor(math.log10(close))) / 10
+    if showRound and rStep > 0
+        float r0 = math.floor(close / rStep) * rStep
+        for rr in array.from(r0, r0 + rStep)
+            zlines.push(line.new(bar_index - 1, rr, bar_index, rr, extend = extend.both, color = color.new(C_GRAY, 72), style = line.style_dotted, width = 1))
+            f_tag(tR4 + 5, rr, rStep >= 1 ? str.tostring(rr, "#,###") : str.tostring(rr, format.mintick), color.new(C_GRAY, 25), math.max(fs - 1, 7), false, "เลขกลม")
+    if showPanel
+        var table pnl = table.new(f_pos(panelPos), 3, 17, bgcolor = color.new(chart.bg_color, 4), frame_color = color.new(C_GRAY, 75), frame_width = 1, border_color = C_NONE, border_width = 0)
+        table.clear(pnl, 0, 0, 2, 16)
+        color fg = chart.fg_color
+        color sub = color.new(chart.fg_color, 10)
+        color off = color.new(C_GRAY, 30)
+        color tint = color.new(C_GRAY, 88)
+        color nob = color(na)
+        string AL = text.align_left
+        string AC = text.align_center
+        string AR = text.align_right
+        string FM = font.family_monospace
+        string FD = font.family_default
+        bool BD = true
+        bool NF = false
+        f_cell(pnl, 0, 0, "อ่านกราฟ · " + tfName0, fg, fsP, AL, tint, BD, "เช็กลิสต์ confirm ของแท่งล่าสุดที่ปิด\nคลาส (วันที่ 9): ต้องมีอย่างน้อย 3–4 ข้อ ทดแทนกันได้\nข้อแนวรับแนวต้านบังคับ", FD)
+        f_cell(pnl, 1, 0, "ขึ้น", C_UP, fsP, AC, tint, BD, "", FD)
+        f_cell(pnl, 2, 0, "ลง", C_DN, fsP, AC, tint, BD, "", FD)
+        for i = 0 to 7
+            int r = i + 1
+            bool en = cen.get(i)
+            bool u = en and f_bit(pmUp, i)
+            bool d = en and f_bit(pmDn, i)
+            string tipI = i == 7 and use8 and not hasVol ? "ฟีดนี้ไม่มีข้อมูล volume — ไม่นับข้อนี้" : cdesc.get(i)
+            f_cell(pnl, 0, r, cname.get(i), en ? sub : off, fsP, AL, nob, NF, tipI, FD)
+            f_cell(pnl, 1, r, not en ? "–" : u ? "●" : "○", u ? C_UP : off, fsP, AC, nob, NF, "", FD)
+            f_cell(pnl, 2, r, not en ? "–" : d ? "●" : "○", d ? C_DN : off, fsP, AC, nob, NF, "", FD)
+        int pnUp = f_cnt(pmUp)
+        int pnDn = f_cnt(pmDn)
+        f_cell(pnl, 0, 9, "รวม (ต้อง ≥ " + str.tostring(minConf) + ")", fg, fsP, AL, tint, BD, "", FD)
+        f_cell(pnl, 1, 9, str.tostring(pnUp) + "/" + str.tostring(cenN), pnUp >= minConf ? C_UP : sub, fsP, AC, tint, BD, "", FM)
+        f_cell(pnl, 2, 9, str.tostring(pnDn) + "/" + str.tostring(cenN), pnDn >= minConf ? C_DN : sub, fsP, AC, tint, BD, "", FM)
+        string vU = vetoNoRange and f_bit(pmUp, 8) ? "ไม่มี Range" : f_bit(pmUp, 9) ? "ติดโซน" : "–"
+        string vD = vetoNoRange and f_bit(pmDn, 8) ? "ไม่มี Range" : f_bit(pmDn, 9) ? "ติดโซน" : "–"
+        f_cell(pnl, 0, 10, "หักล้าง", sub, fsP, AL, nob, NF, "50/50 = แท่งไม่มี Range (candlestick §3)\nติดโซน = แนวถัดไปใกล้กว่า " + str.tostring(roomAtr) + " ATR (trend §15)", FD)
+        f_cell(pnl, 1, 10, vU, vU == "–" ? off : C_WARN, fsP, AC, nob, vU != "–", "", FD)
+        f_cell(pnl, 2, 10, vD, vD == "–" ? off : C_WARN, fsP, AC, nob, vD != "–", "", FD)
+        bool psUp = f_star(pmUp)
+        bool psDn = f_star(pmDn)
+        bool pwUp = f_vetoed(pmUp)
+        bool pwDn = f_vetoed(pmDn)
+        bool atZone = f_bit(pmUp, 0) or f_bit(pmDn, 0)
+        string stTxt = psUp ? "★  ฝั่งขึ้น ครบ " + str.tostring(pnUp) + " ข้อ" : psDn ? "★  ฝั่งลง ครบ " + str.tostring(pnDn) + " ข้อ" : pwUp ? "☆  ฝั่งขึ้นครบ แต่" + f_reason(pmUp) : pwDn ? "☆  ฝั่งลงครบ แต่" + f_reason(pmDn) : not atZone ? "ไม่ได้อยู่ที่โซน" : "ยังไม่ครบ"
+        color stBg = psUp ? C_UP : psDn ? C_DN : pwUp or pwDn ? C_WARN : tint
+        color stTc = psUp or psDn ? color.white : pwUp or pwDn ? C_INK : sub
+        f_cell(pnl, 0, 11, stTxt, stTc, fsP, AC, stBg, BD, pInfo + "\n" + manualTxt, FD)
+        table.merge_cells(pnl, 0, 11, 2, 11)
+        [nrT, nrB, _, _, _, _] = f_near2(resZ, true)
+        [nsT, nsB, _, _, _, _] = f_near2(supZ, false)
+        float rT = nrT
+        float rB = nrB
+        float sT = nsT
+        float sB = nsB
+        if not na(cr)
+            rT := cr.top
+            rB := cr.bot
+        if not na(cs)
+            sT := cs.top
+            sB := cs.bot
+        string rName = na(cr) ? "แนวต้านถัดไป" : nmR
+        string sName = na(cs) ? "แนวรับถัดไป" : nmS
+        string rDist = na(rT) ? "–" : close >= rB ? "ในโซน" : "+" + str.tostring(rB - close, "#,##0.0")
+        string sDist = na(sT) ? "–" : close <= sT ? "ในโซน" : "−" + str.tostring(close - sT, "#,##0.0")
+        string rTip = na(rT) ? "ยังไม่มีแนว" : "โซน " + f_px(rB) + " – " + f_px(rT) + "\nระยะจากราคาปิดถึงขอบล่างของโซน"
+        string sTip = na(sT) ? "ยังไม่มีแนว" : "โซน " + f_px(sB) + " – " + f_px(sT) + "\nระยะจากราคาปิดถึงขอบบนของโซน"
+        if showTrade
+            string trName = tDir == 1 ? "Buy  " + f_px(tEntry) : tDir == -1 ? "Sell  " + f_px(tEntry) : nT > 0 ? (lastDir == 1 ? "Buy" : "Sell") + " ล่าสุด" : "ยังไม่มีไม้"
+            color trCol = tDir == 1 ? C_UP : tDir == -1 ? C_DN : nT > 0 ? sub : off
+            string trRes = tDir != 0 ? "เปิดอยู่" : nT > 0 ? lastOut : ""
+            color trResCol = tDir != 0 ? sub : nz(lastR) > 0.05 ? C_UP : nz(lastR) < -0.05 ? C_DN : sub
+            string trTip = tDir != 0 ? "SL " + f_px(tSL) + (sBE.get(selMode) ? " (เลื่อนมาหน้าทุนแล้ว)" : "") + "\nTP " + f_px(tTP) + "\nเปิดเมื่อ " + str.tostring(bar_index - tBar) + " แท่งก่อน\nกระโดดออก: " + exitMode : "ไม้ล่าสุดปิดด้วย: " + lastWhy
+            f_cell(pnl, 0, 12, trName, trCol, fsP, AL, nob, BD, trTip, FD)
+            f_cell(pnl, 1, 12, trRes, trResCol, fsP, AR, nob, BD, trTip, FM)
+            table.merge_cells(pnl, 1, 12, 2, 12)
+            if showStats
+                string stTxt2 = nT == 0 ? "ย้อนหลัง  ยังไม่มีไม้ที่ปิด" : "ย้อนหลัง  " + str.tostring(nT) + " ไม้ · ชนะ " + f_pct(nW, nT) + " · แพ้ " + f_pct(nL, nT) + " · เสมอ " + f_pct(nT - nW - nL, nT)
+                string cmpTip = "เทียบกระโดดออก (★ ชุดเดียวกัน · แต่ละแบบเปิดไม้เมื่อว่าง)\n" + f_statLine(0) + "\n" + f_statLine(1) + "\n" + f_statLine(2) + "\n" + f_statLine(3) + "\n\nกำลังใช้: " + exitMode + "\nเสมอ = ออกที่จุดเข้าพอดี (หน้าทุน)\nแท่งเดียวโดนทั้ง TP และ SL นับเป็นแพ้"
+                f_cell(pnl, 0, 13, stTxt2, sub, fsP - 1, AL, nob, NF, cmpTip, FD)
+                table.merge_cells(pnl, 0, 13, 2, 13)
+        f_cell(pnl, 0, 14, rName, C_DN, fsP, AL, nob, NF, rTip, FD)
+        f_cell(pnl, 1, 14, rDist, sub, fsP, AR, nob, NF, rTip, FM)
+        table.merge_cells(pnl, 1, 14, 2, 14)
+        f_cell(pnl, 0, 15, sName, C_UP, fsP, AL, nob, NF, sTip, FD)
+        f_cell(pnl, 1, 15, sDist, sub, fsP, AR, nob, NF, sTip, FM)
+        table.merge_cells(pnl, 1, 15, 2, 15)
+        f_cell(pnl, 0, 16, "ทิศ   " + tfName0 + " " + f_dirTh(view) + " · " + tfName1 + " " + f_dirTh(hv1) + " · " + tfName2 + " " + f_dirTh(hv2), sub, fsP - 1, AL, nob, NF, "ทิศตามโครงสร้างของแต่ละ TF (เนื้อปิดทะลุแนวปัจจุบัน = เปลี่ยนโครงสร้าง)", FD)
+        table.merge_cells(pnl, 0, 16, 2, 16)
+
+float beWin = 100.0 / (1 + rr)
+
+if barstate.islastconfirmedhistory and showAna
+    string lg = "วิเคราะห์ confirm · " + tfName0 + " · ทั้งหมด " + str.tostring(qN) + " ไม้ · ชนะ " + f_pct(qW, qN) + " (เสมอตัว " + str.tostring(beWin, "0") + "%)"
+    for b = 1 to 9
+        [vv, vc] = f_verdict(aN.get(b), aW.get(b), bN.get(b), bW.get(b), b >= 8)
+        lg += "\n" + f_anaName(b) + ": มี " + f_wn(aW.get(b), aN.get(b)) + " · ไม่มี " + f_wn(bW.get(b), bN.get(b)) + " → " + vv
+    [n12, w12] = f_cntGroup(0, 2)
+    [n5, w5] = f_cntGroup(5, 8)
+    lg += "\nconfirm 1–2 ข้อ: " + f_wn(w12, n12) + " · 3 ข้อ: " + f_wn(cW.get(3), cN.get(3)) + " · 4 ข้อ: " + f_wn(cW.get(4), cN.get(4)) + " · 5+ ข้อ: " + f_wn(w5, n5)
+    log.info(lg)
+
+if barstate.islast and showAna
+    var table at = table.new(f_pos(anaPos), 4, 18, bgcolor = color.new(chart.bg_color, 4), frame_color = color.new(C_GRAY, 75), frame_width = 1, border_color = C_NONE, border_width = 0)
+    table.clear(at, 0, 0, 3, 17)
+    color fg = chart.fg_color
+    color sub = color.new(chart.fg_color, 10)
+    color tint = color.new(C_GRAY, 88)
+    color nob = color(na)
+    string FD = font.family_default
+    string FM = font.family_monospace
+    string howTip = "ไม้ทดสอบ = ทุกแท่งที่ react หรือทะลุที่โซน (ไม่ต้องครบ ★ และรวมที่โดนหักล้าง)\nจุดเข้า = ราคาปิด · SL = ปลายไส้ · TP = ระยะ SL × " + str.tostring(rr) + " · ไม่มีกระโดดออก · ไม้ซ้อนกันได้\nเสมอตัวที่ชนะ " + str.tostring(beWin, "0") + "% · ต่ำกว่านี้ = แพ้มากกว่า\nผล: ต่างกันเกิน 2 เท่าของความคลาดเคลื่อน = ชัด · ไม่ถึง = ไม่ต่างกัน · ฝั่งใดน้อยกว่า 20 ไม้ = ตัวอย่างน้อย"
+    f_cell(at, 0, 0, "ข้อไหนทำให้แพ้ · " + tfName0, fg, fsP, text.align_left, tint, true, howTip, FD)
+    table.merge_cells(at, 0, 0, 3, 0)
+    f_cell(at, 0, 1, "ข้อ", sub, fsP - 1, text.align_left, nob, false, "", FD)
+    f_cell(at, 1, 1, "มี: ชนะ (ไม้)", sub, fsP - 1, text.align_center, nob, false, "", FD)
+    f_cell(at, 2, 1, "ไม่มี: ชนะ (ไม้)", sub, fsP - 1, text.align_center, nob, false, "", FD)
+    f_cell(at, 3, 1, "ผล", sub, fsP - 1, text.align_center, nob, false, "", FD)
+    for b = 1 to 9
+        int r = b + 1
+        if b == 7 and not hasVol
+            f_cell(at, 0, r, f_anaName(b), color.new(C_GRAY, 30), fsP, text.align_left, nob, false, "", FD)
+            f_cell(at, 1, r, "ฟีดนี้ไม่มี volume", color.new(C_GRAY, 30), fsP - 1, text.align_center, nob, false, "", FD)
+            table.merge_cells(at, 1, r, 3, r)
+        else
+            [vv, vc] = f_verdict(aN.get(b), aW.get(b), bN.get(b), bW.get(b), b >= 8)
+            f_cell(at, 0, r, f_anaName(b), sub, fsP, text.align_left, b == 8 ? tint : nob, false, b >= 8 ? "มี = แท่งนั้นโดนหักล้างข้อนี้" : cdesc.get(b), FD)
+            f_cell(at, 1, r, f_wn(aW.get(b), aN.get(b)), sub, fsP, text.align_center, b == 8 ? tint : nob, false, "", FM)
+            f_cell(at, 2, r, f_wn(bW.get(b), bN.get(b)), sub, fsP, text.align_center, b == 8 ? tint : nob, false, "", FM)
+            f_cell(at, 3, r, vv, vc, fsP, text.align_center, b == 8 ? tint : nob, vv != "ไม่ต่างกัน" and vv != "ตัวอย่างน้อย", "", FD)
+    f_cell(at, 0, 11, "จำนวน confirm", sub, fsP - 1, text.align_left, tint, true, "ทดสอบกฎ 'ต้องมีอย่างน้อย 3 ข้อ' (คลิปวันที่ 9)", FD)
+    f_cell(at, 1, 11, "ชนะ (ไม้)", sub, fsP - 1, text.align_center, tint, false, "", FD)
+    table.merge_cells(at, 1, 11, 3, 11)
+    [n12, w12] = f_cntGroup(0, 2)
+    [n5, w5] = f_cntGroup(5, 8)
+    array<string> gName = array.from("1–2 ข้อ", "3 ข้อ", "4 ข้อ", "5 ข้อขึ้นไป")
+    array<int> gN = array.from(n12, cN.get(3), cN.get(4), n5)
+    array<int> gW = array.from(w12, cW.get(3), cW.get(4), w5)
+    for g = 0 to 3
+        int gn = gN.get(g)
+        int gw = gW.get(g)
+        color gc = gn < 20 ? sub : 100.0 * gw / gn >= beWin ? C_UP : C_DN
+        f_cell(at, 0, 12 + g, gName.get(g), sub, fsP, text.align_left, nob, false, "", FD)
+        f_cell(at, 1, 12 + g, f_wn(gw, gn), gc, fsP, text.align_center, nob, true, "", FM)
+        table.merge_cells(at, 1, 12 + g, 3, 12 + g)
+    f_cell(at, 0, 16, "ทั้งหมด " + str.tostring(qN) + " ไม้ · ชนะ " + f_pct(qW, qN) + " · เสมอตัวที่ " + str.tostring(beWin, "0") + "%", sub, fsP - 1, text.align_left, nob, false, howTip, FD)
+    table.merge_cells(at, 0, 16, 3, 16)
